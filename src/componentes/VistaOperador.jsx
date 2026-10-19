@@ -1,304 +1,464 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/axios';
+import axios from '../api/axios';
 
-export default function VistaOperador({ usuarioActual }) {
-    const [contratos, setContratos] = useState([]);
-    const [operadores, setOperadores] = useState([]);
-    const [cargando, setCargando] = useState(false);
-    const [mensaje, setMensaje] = useState(null);
-
-    const [formulario, setFormulario] = useState({
-        contratoId: '',
-        fecha: new Date().toISOString().split('T')[0],
-        hora_entrada: '08:00',
-        hora_salida: '18:00',
-        horometro_inicio: '',
-        horometro_final: '',
-        combustible_litros: 0,
-        firmado: false,
-        tarea_observacion: ''
-    });
+export default function VistaOperador({ operador }) {
+    const [maquinarias, setMaquinarias] = useState([]);
+    const [idMaquina, setIdMaquina] = useState('');
+    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+    const [horaEntrada, setHoraEntrada] = useState('08:00');
+    const [horaSalida, setHoraSalida] = useState('18:00');
+    const [horometroInicial, setHorometroInicial] = useState('0.0');
+    const [horometroFinal, setHorometroFinal] = useState('');
+    const [combustible, setCombustible] = useState('0');
+    const [firmado, setFirmado] = useState(false);
+    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
+    const [guardando, setGuardando] = useState(false);
 
     useEffect(() => {
-        Promise.all([
-            api.get('/contratos/').catch(() => ({ data: [] })),
-            api.get('/operadores/').catch(() => ({ data: [] }))
-        ])
-            .then(([resContratos, resOperadores]) => {
-                setContratos(resContratos.data);
-                setOperadores(resOperadores.data);
-
-                if (resContratos.data.length > 0) {
-                    const primerContrato = resContratos.data[0];
-                    setFormulario((prev) => ({
-                        ...prev,
-                        contratoId: primerContrato.id,
-                        horometro_inicio: primerContrato.maquinaria_detalle?.horometro_acumulado || ''
-                    }));
+        axios.get('/api/maquinarias/')
+            .then((res) => {
+                setMaquinarias(res.data);
+                if (res.data.length > 0) {
+                    seleccionarMaquina(res.data[0]);
                 }
             })
-            .catch((err) => console.error('Error al cargar datos:', err));
+            .catch((err) => console.error(err));
     }, []);
 
-    const alCambiarContratoMaquina = (contratoId) => {
-        const contratoEncontrado = contratos.find((c) => String(c.id) === String(contratoId));
-        setFormulario((prev) => ({
-            ...prev,
-            contratoId: contratoId,
-            horometro_inicio: contratoEncontrado?.maquinaria_detalle?.horometro_acumulado || ''
-        }));
+    const seleccionarMaquina = (maq) => {
+        setIdMaquina(maq.id_maquina);
+        if (maq.horometro_actual !== undefined) {
+            setHorometroInicial(maq.horometro_actual.toString());
+        }
     };
 
-    const horasCalculadas =
-        formulario.horometro_final && formulario.horometro_inicio
-            ? Math.max(0, parseFloat(formulario.horometro_final) - parseFloat(formulario.horometro_inicio)).toFixed(2)
-            : '0.00';
+    const ini = parseFloat(horometroInicial) || 0;
+    const fin = parseFloat(horometroFinal) || 0;
+    const litComb = parseFloat(combustible) || 0;
 
-    const manejarCambio = (e) => {
-        const { name, value, type, checked } = e.target;
-        setFormulario((prev) => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }));
+    const horasCalculadas = (fin > ini && ini >= 0 && fin >= 0)
+        ? Math.round((fin - ini) * 10) / 10
+        : 0;
+
+    const validarTurno = () => {
+        if (!horaEntrada || !horaSalida) return 'Ingresa las horas de entrada y salida.';
+        const [hE, mE] = horaEntrada.split(':').map(Number);
+        const [hS, mS] = horaSalida.split(':').map(Number);
+        const minEntrada = hE * 60 + mE;
+        const minSalida = hS * 60 + mS;
+
+        if (minSalida <= minEntrada) return 'La hora de salida debe ser posterior a la de entrada.';
+        if ((minSalida - minEntrada) / 60 > 24) return 'El turno de reloj no puede superar las 24 horas.';
+        return null;
     };
 
-    const enviarReport = async (e) => {
+    const guardarReport = async (e) => {
         e.preventDefault();
-        setMensaje(null);
+        setMensaje({ tipo: '', texto: '' });
 
-        if (!formulario.contratoId) {
-            alert('No hay maquinarias asignadas a faenas activas en este momento.');
+        const errTurno = validarTurno();
+        if (errTurno) {
+            setMensaje({ tipo: 'error', texto: errTurno });
             return;
         }
 
-        if (!formulario.firmado) {
-            alert('Debe confirmar la firma del supervisor en obra para poder registrar la jornada.');
+        if (ini < 0 || fin < 0) {
+            setMensaje({ tipo: 'error', texto: 'Los horómetros no pueden contener valores negativos.' });
             return;
         }
 
-        if (parseFloat(formulario.horometro_final) < parseFloat(formulario.horometro_inicio)) {
-            alert('Error: El horómetro final no puede ser inferior al horómetro inicial.');
+        if (fin <= ini) {
+            setMensaje({ tipo: 'error', texto: 'El horómetro final debe ser mayor al inicial.' });
             return;
         }
 
-        // Resolver RUT del operador automáticamente:
-        // Si existe un operador creado en la BD usamos ese RUT; si no, usamos el username
-        let rutOperador = operadores.length > 0 ? operadores[0].rut : (usuarioActual?.username || '11111111-1');
+        if (horasCalculadas > 24) {
+            setMensaje({
+                tipo: 'error',
+                texto: `La jornada (${horasCalculadas} hrs) excede el máximo de 24 horas permitidas por turno.`
+            });
+            return;
+        }
 
-        setCargando(true);
+        if (litComb < 0) {
+            setMensaje({ tipo: 'error', texto: 'El combustible no puede ser negativo.' });
+            return;
+        }
+
+        if (!firmado) {
+            setMensaje({ tipo: 'error', texto: 'Confirma la firma del supervisor para continuar.' });
+            return;
+        }
+
+        setGuardando(true);
+        const payload = {
+            id_contrato: 1,
+            id_operador: operador.id_operador,
+            id_maquina: parseInt(idMaquina),
+            id_hes: null,
+            fecha: fecha,
+            hora_entrada: horaEntrada,
+            hora_salida: horaSalida,
+            horometro_inicial: ini,
+            horometro_final: fin,
+            horas_trabajadas: Math.round(horasCalculadas),
+            combustible: litComb,
+            firmado: firmado
+        };
+
         try {
-            const cuerpo = {
-                contrato: formulario.contratoId,
-                operador: rutOperador,
-                fecha: formulario.fecha,
-                hora_entrada: formulario.hora_entrada,
-                hora_salida: formulario.hora_salida,
-                horometro_inicio: parseFloat(formulario.horometro_inicio),
-                horometro_final: parseFloat(formulario.horometro_final),
-                combustible_litros: parseFloat(formulario.combustible_litros) || 0,
-                firmado: formulario.firmado,
-                metadata_auditoria: {
-                    tarea_realizada: formulario.tarea_observacion,
-                    usuario_login: usuarioActual?.username
-                }
-            };
-
-            await api.post('/reports/', cuerpo);
-            setMensaje({ tipo: 'exito', texto: 'Parte diario ingresado con éxito al sistema.' });
-
-            setFormulario((prev) => ({
-                ...prev,
-                horometro_inicio: formulario.horometro_final,
-                horometro_final: '',
-                firmado: false,
-                tarea_observacion: ''
-            }));
+            await axios.post('/api/reports/', payload);
+            setMensaje({ tipo: 'exito', texto: 'Reporte registrado y enviado con éxito.' });
+            setHorometroInicial(fin.toString());
+            setHorometroFinal('');
+            setCombustible('0');
+            setFirmado(false);
         } catch (err) {
-            console.error(err);
-            const detalle = err.response?.data ? JSON.stringify(err.response.data) : 'Error de comunicación';
-            setMensaje({ tipo: 'error', texto: `Error al enviar: ${detalle}` });
+            setMensaje({ tipo: 'error', texto: 'Error al conectar con el servidor.' });
         } finally {
-            setCargando(false);
+            setGuardando(false);
         }
+    };
+
+    const inputStyle = {
+        width: '100%',
+        height: '38px',
+        padding: '0 11px',
+        backgroundColor: '#ffffff',
+        color: '#0f172a',
+        border: '1px solid #cbd5e1',
+        borderRadius: '4px',
+        fontSize: '13px',
+        fontWeight: '500',
+        outline: 'none',
+        boxSizing: 'border-box'
+    };
+
+    const labelStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        height: '18px',
+        fontSize: '11px',
+        fontWeight: '700',
+        color: '#334155',
+        letterSpacing: '0.03em',
+        textTransform: 'uppercase',
+        marginBottom: '6px'
     };
 
     return (
-        <div style={{ maxWidth: '540px', margin: '0 auto', background: '#ffffff', padding: '24px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <div style={{
+            minHeight: '100vh',
+            backgroundColor: '#e2e8f0',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            padding: '32px 16px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            boxSizing: 'border-box'
+        }}>
+            <div style={{
+                width: '100%',
+                maxWidth: '820px',
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+                overflow: 'hidden'
+            }}>
 
-            {/* Encabezado con Operador Fijo */}
-            <div style={{ background: '#0f172a', color: 'white', padding: '16px', borderRadius: '6px', marginBottom: '20px' }}>
-                <h2 style={{ margin: 0, fontSize: '18px' }}>Registro Diario de Terreno</h2>
-                <div style={{ marginTop: '6px', fontSize: '13px', color: '#94a3b8' }}>
-                    Operador en turno: <strong style={{ color: '#38bdf8' }}>{usuarioActual?.nombre_completo || usuarioActual?.username}</strong>
-                </div>
-            </div>
-
-            {mensaje && (
+                {/* Cabecera Técnica */}
                 <div style={{
-                    padding: '12px',
-                    marginBottom: '16px',
-                    borderRadius: '6px',
-                    background: mensaje.tipo === 'exito' ? '#dcfce7' : '#fee2e2',
-                    color: mensaje.tipo === 'exito' ? '#166534' : '#991b1b',
-                    fontSize: '14px',
-                    fontWeight: '500'
+                    padding: '14px 22px',
+                    backgroundColor: '#0f172a',
+                    color: '#ffffff',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '3px solid #d97706'
                 }}>
-                    {mensaje.texto}
-                </div>
-            )}
-
-            <form onSubmit={enviarReport} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-                {/* Selector amigable de Maquinaria / Faena */}
-                <div>
-                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                        Maquinaria en Faena:
-                    </label>
-                    <select
-                        value={formulario.contratoId}
-                        onChange={(e) => alCambiarContratoMaquina(e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                    >
-                        {contratos.length === 0 ? (
-                            <option value="">No hay maquinarias asignadas a faenas</option>
-                        ) : (
-                            contratos.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                    {c.maquinaria_detalle ? `${c.maquinaria_detalle.tipo} (${c.maquinaria})` : `Equipo Patente: ${c.maquinaria}`}
-                                </option>
-                            ))
-                        )}
-                    </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                        <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                            Hora Inicio:
-                        </label>
-                        <input
-                            type="time"
-                            name="hora_entrada"
-                            value={formulario.hora_entrada}
-                            onChange={manejarCambio}
-                            required
-                            style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box' }}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                            <span style={{
+                                backgroundColor: '#d97706',
+                                color: '#ffffff',
+                                fontSize: '10px',
+                                fontWeight: '800',
+                                padding: '2px 6px',
+                                borderRadius: '3px',
+                                letterSpacing: '0.04em'
+                            }}>
+                                FAENA
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', letterSpacing: '0.04em' }}>
+                                MULTIMAK 360
+                            </span>
+                        </div>
+                        <h1 style={{ fontSize: '17px', fontWeight: '700', margin: 0, color: '#f8fafc' }}>
+                            Reporte Diario de Operación
+                        </h1>
                     </div>
-                    <div>
-                        <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                            Hora Término:
-                        </label>
-                        <input
-                            type="time"
-                            name="hora_salida"
-                            value={formulario.hora_salida}
-                            onChange={manejarCambio}
-                            required
-                            style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box' }}
-                        />
+
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #334155',
+                        padding: '5px 12px',
+                        borderRadius: '4px'
+                    }}>
+                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+                        <span style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: '600' }}>
+                            {operador.nombre}
+                        </span>
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                        <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                            Horómetro Inicial:
-                        </label>
-                        <input
-                            type="number"
-                            step="0.1"
-                            name="horometro_inicio"
-                            value={formulario.horometro_inicio}
-                            onChange={manejarCambio}
-                            required
-                            placeholder="Ej: 1673.1"
-                            style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                        />
-                    </div>
-                    <div>
-                        <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                            Horómetro Final:
-                        </label>
-                        <input
-                            type="number"
-                            step="0.1"
-                            name="horometro_final"
-                            value={formulario.horometro_final}
-                            onChange={manejarCambio}
-                            required
-                            placeholder="Ej: 1676.1"
-                            style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                        />
-                    </div>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '15px', fontWeight: '600', color: '#0369a1' }}>
-                        Horas Turno: {horasCalculadas} hrs
-                    </span>
-                </div>
-
-                <div>
-                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                        Carga de Combustible (Litros):
-                    </label>
-                    <input
-                        type="number"
-                        step="0.1"
-                        name="combustible_litros"
-                        value={formulario.combustible_litros}
-                        onChange={manejarCambio}
-                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box' }}
-                    />
-                </div>
-
-                <div>
-                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: '#1e293b', fontSize: '13px' }}>
-                        Trabajo Realizado en Obra:
-                    </label>
-                    <textarea
-                        name="tarea_observacion"
-                        value={formulario.tarea_observacion}
-                        onChange={manejarCambio}
-                        rows="2"
-                        placeholder="Ej: Traslado de material, despeje o excavación..."
-                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box' }}
-                    />
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #cbd5e1' }}>
-                    <input
-                        type="checkbox"
-                        id="firmado"
-                        name="firmado"
-                        checked={formulario.firmado}
-                        onChange={manejarCambio}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
-                    <label htmlFor="firmado" style={{ fontWeight: '500', color: '#334155', cursor: 'pointer', fontSize: '13px' }}>
-                        Confirmar que el reporte cuenta con la firma del supervisor en obra
-                    </label>
-                </div>
-
-                <button
-                    type="submit"
-                    disabled={cargando}
-                    style={{
-                        background: '#0284c7',
-                        color: 'white',
-                        padding: '12px',
-                        fontSize: '15px',
+                {/* Notificaciones */}
+                {mensaje.texto && (
+                    <div style={{
+                        margin: '14px 22px 0 22px',
+                        padding: '9px 13px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
                         fontWeight: '600',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: cargando ? 'not-allowed' : 'pointer'
-                    }}
-                >
-                    {cargando ? 'Procesando...' : 'Enviar Reporte Diario'}
-                </button>
-            </form>
+                        backgroundColor: mensaje.tipo === 'exito' ? '#dcfce7' : '#fee2e2',
+                        color: mensaje.tipo === 'exito' ? '#14532d' : '#991b1b',
+                        border: `1px solid ${mensaje.tipo === 'exito' ? '#86efac' : '#fca5a5'}`
+                    }}>
+                        {mensaje.texto}
+                    </div>
+                )}
+
+                {/* Formulario */}
+                <form onSubmit={guardarReport} style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
+
+                        {/* Bloque Izquierdo */}
+                        <div style={{
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '4px',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                        }}>
+                            <div>
+                                <label style={labelStyle}>Maquinaria Asignada</label>
+                                <select
+                                    value={idMaquina}
+                                    onChange={(e) => {
+                                        const found = maquinarias.find((m) => m.id_maquina === parseInt(e.target.value));
+                                        if (found) seleccionarMaquina(found);
+                                    }}
+                                    style={{ ...inputStyle, cursor: 'pointer' }}
+                                >
+                                    {maquinarias.map((m) => (
+                                        <option key={m.id_maquina} value={m.id_maquina}>
+                                            [{m.patente}] {m.tipo} — {m.marca} {m.modelo} ({m.horometro_actual}h)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style={labelStyle}>Fecha de Registro</label>
+                                <input
+                                    type="date"
+                                    value={fecha}
+                                    onChange={(e) => setFecha(e.target.value)}
+                                    style={inputStyle}
+                                    required
+                                />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>
+                                    <label style={labelStyle}>Hora Entrada</label>
+                                    <input
+                                        type="time"
+                                        value={horaEntrada}
+                                        onChange={(e) => setHoraEntrada(e.target.value)}
+                                        style={inputStyle}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Hora Salida</label>
+                                    <input
+                                        type="time"
+                                        value={horaSalida}
+                                        onChange={(e) => setHoraSalida(e.target.value)}
+                                        style={inputStyle}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bloque Derecho */}
+                        <div style={{
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '4px',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                        }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>
+                                    <label style={labelStyle}>
+                                        Horómetro Inicial
+                                        <span title="Dato de la base de datos" style={{ fontSize: '11px', color: '#94a3b8' }}></span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        value={horometroInicial}
+                                        readOnly
+                                        tabIndex="-1"
+                                        style={{
+                                            ...inputStyle,
+                                            backgroundColor: '#f1f5f9',
+                                            color: '#475569',
+                                            cursor: 'not-allowed',
+                                            fontFamily: 'Consolas, monospace',
+                                            fontWeight: '700'
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Horómetro Final</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        value={horometroFinal}
+                                        onChange={(e) => setHorometroFinal(e.target.value)}
+                                        placeholder="0.0"
+                                        style={{ ...inputStyle, fontFamily: 'Consolas, monospace', fontWeight: '600' }}
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={labelStyle}>Combustible Cargado (Litros)</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={combustible}
+                                    onChange={(e) => setCombustible(e.target.value)}
+                                    style={{ ...inputStyle, fontFamily: 'Consolas, monospace' }}
+                                    required
+                                />
+                            </div>
+
+                            {/* Indicador de Horas */}
+                            <div style={{
+                                height: '48px',
+                                backgroundColor: '#0f172a',
+                                border: '1px solid #1e293b',
+                                borderRadius: '4px',
+                                padding: '0 14px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                boxSizing: 'border-box'
+                            }}>
+                                <div>
+                                    <span style={{
+                                        display: 'block',
+                                        fontSize: '10px',
+                                        fontWeight: '800',
+                                        color: '#ffffff',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.05em'
+                                    }}>
+                                        HORAS CALCULADAS
+                                    </span>
+                                    <span style={{
+                                        fontSize: '11px',
+                                        color: '#94a3b8',
+                                        fontWeight: '500'
+                                    }}>
+                                        Jornada de faena
+                                    </span>
+                                </div>
+                                <span style={{
+                                    fontSize: '20px',
+                                    fontWeight: '700',
+                                    color: horasCalculadas > 24 ? '#f87171' : '#fbbf24',
+                                    fontFamily: 'Consolas, monospace'
+                                }}>
+                                    {horasCalculadas} <span style={{ fontSize: '12px', fontWeight: '600', color: '#ffffff' }}>HRS</span>
+                                </span>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    {/* Barra de Firma y Botón */}
+                    <div style={{
+                        marginTop: '2px',
+                        paddingTop: '14px',
+                        borderTop: '1px solid #e2e8f0',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
+                        <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '9px',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: '#1e293b'
+                        }}>
+                            <input
+                                type="checkbox"
+                                checked={firmado}
+                                onChange={(e) => setFirmado(e.target.checked)}
+                                style={{
+                                    width: '17px',
+                                    height: '17px',
+                                    accentColor: '#0f172a',
+                                    cursor: 'pointer'
+                                }}
+                                required
+                            />
+                            Firma y conformidad del supervisor
+                        </label>
+
+                        <button
+                            type="submit"
+                            disabled={guardando}
+                            style={{
+                                padding: '9px 22px',
+                                backgroundColor: guardando ? '#64748b' : '#0f172a',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                letterSpacing: '0.03em',
+                                textTransform: 'uppercase',
+                                cursor: guardando ? 'not-allowed' : 'pointer'
+                            }}
+                        >
+                            {guardando ? 'Guardando...' : 'Guardar Reporte'}
+                        </button>
+                    </div>
+
+                </form>
+            </div>
         </div>
     );
 }

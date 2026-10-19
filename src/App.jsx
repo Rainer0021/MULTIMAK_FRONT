@@ -1,70 +1,69 @@
 import React, { useState } from 'react';
-import InicioSesion from './componentes/InicioSesion.jsx';
-import VistaOperador from './componentes/VistaOperador.jsx';
-import PanelAdmin from './componentes/PanelAdmin.jsx';
+import VistaOperador from './componentes/VistaOperador';
+import VistaAdmin from './componentes/VistaAdmin';
 
 export default function App() {
-  const [usuarioActual, setUsuarioActual] = useState(null);
+  const [rolActual, setRolActual] = useState('operador');
 
-  if (!usuarioActual) {
-    return <InicioSesion alIniciarSesion={(datos) => setUsuarioActual(datos)} />;
-  }
-
-  const cerrarSesion = () => {
-    setUsuarioActual(null);
+  const operadorSesion = {
+    id_operador: 1,
+    nombre: 'Operador Terreno'
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9' }}>
-      <header
-        style={{
-          background: '#0f172a',
-          color: 'white',
-          padding: '12px 24px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span style={{ fontWeight: 'bold', fontSize: '18px', letterSpacing: '0.5px' }}>
-            MULTIMAK 360
-          </span>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-            {usuarioActual.rol === 'admin' ? 'Panel de Administración' : 'Módulo de Terreno (Operadores)'}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <span style={{ fontSize: '13px', color: '#e2e8f0' }}>
-            Usuario: <strong>{usuarioActual.nombre_completo || usuarioActual.username}</strong>
-          </span>
+    <div>
+      {/* Barra de alternancia rápida */}
+      <div style={{
+        backgroundColor: '#0f172a',
+        padding: '8px 16px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottom: '1px solid #334155'
+      }}>
+        <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
+          MULTIMAK 360 | Simulador
+        </span>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            type="button"
-            onClick={cerrarSesion}
+            onClick={() => setRolActual('operador')}
             style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: '1px solid #475569',
-              background: '#1e293b',
-              color: '#e2e8f0',
-              fontSize: '12px',
-              cursor: 'pointer'
+              padding: '4px 10px',
+              backgroundColor: rolActual === 'operador' ? '#f59e0b' : '#1e293b',
+              color: rolActual === 'operador' ? '#0f172a' : '#cbd5e1',
+              border: 'none',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              fontWeight: '700',
+              fontSize: '11px'
             }}
           >
-            Cerrar Sesión
+            Operador
+          </button>
+          <button
+            onClick={() => setRolActual('admin')}
+            style={{
+              padding: '4px 10px',
+              backgroundColor: rolActual === 'admin' ? '#f59e0b' : '#1e293b',
+              color: rolActual === 'admin' ? '#0f172a' : '#cbd5e1',
+              border: 'none',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              fontWeight: '700',
+              fontSize: '11px'
+            }}
+          >
+            Administrador
           </button>
         </div>
-      </header>
+      </div>
 
-      <main style={{ padding: '24px 16px' }}>
-        {usuarioActual.rol === 'admin' ? (
-          <PanelAdmin />
-        ) : (
-          <VistaOperador usuarioActual={usuarioActual} />
-        )}
-      </main>
+      {/* Renderizado de vistas */}
+      {rolActual === 'operador' ? (
+        <VistaOperador operador={operadorSesion} />
+      ) : (
+        <VistaAdmin />
+      )}
     </div>
   );
 }
