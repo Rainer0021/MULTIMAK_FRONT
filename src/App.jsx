@@ -22,7 +22,7 @@ export default function App() {
         borderBottom: '1px solid #334155'
       }}>
         <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
-          MULTIMAK 360 | Simulador
+          MULTIMAK 360
         </span>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
