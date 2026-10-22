@@ -11,7 +11,7 @@ export default function VistaAdmin() {
     const [filtroEstado, setFiltroEstado] = useState('TODOS');
     const [cargando, setCargando] = useState(true);
 
-    // Estado para el menú desplegable
+    // Menú desplegable
     const [menuAccionesAbierto, setMenuAccionesAbierto] = useState(false);
     const dropdownRef = useRef(null);
 
@@ -41,15 +41,19 @@ export default function VistaAdmin() {
 
     const [formGasto, setFormGasto] = useState({
         id_maquina: '',
-        tipoGasto: 'Repuesto',
+        categoria_gasto: 'Repuesto',
         monto: '',
         fecha: new Date().toISOString().split('T')[0]
     });
 
+    // Fechas lógicas para licencia
+    const fechaMinLicencia = new Date().toISOString().split('T')[0];
+    const anioActual = new Date().getFullYear();
+    const fechaMaxLicencia = `${anioActual + 10}-12-31`;
+
     useEffect(() => {
         cargarDatos();
 
-        // Cerrar el menú desplegable si se hace clic afuera
         const handleClickAfuera = (event) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setMenuAccionesAbierto(false);
@@ -58,6 +62,16 @@ export default function VistaAdmin() {
         document.addEventListener('mousedown', handleClickAfuera);
         return () => document.removeEventListener('mousedown', handleClickAfuera);
     }, []);
+
+    // Limpia el mensaje automáticamente después de 4 segundos
+    useEffect(() => {
+        if (mensaje.texto) {
+            const timer = setTimeout(() => {
+                setMensaje({ tipo: '', texto: '' });
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [mensaje]);
 
     const cargarDatos = async () => {
         setCargando(true);
@@ -103,8 +117,70 @@ export default function VistaAdmin() {
         }
     };
 
+    // Formateador de Patente Chilena (LL-LL-NN)
+    const formatearPatenteChilena = (valor) => {
+        const limpia = valor.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
+        if (limpia.length <= 2) return limpia;
+        if (limpia.length <= 4) return `${limpia.slice(0, 2)}-${limpia.slice(2)}`;
+        return `${limpia.slice(0, 2)}-${limpia.slice(2, 4)}-${limpia.slice(4, 6)}`;
+    };
+
+    const handlePatenteChange = (e) => {
+        setFormMaquina({ ...formMaquina, patente: formatearPatenteChilena(e.target.value) });
+    };
+
+    // Formateador y validador de RUT chileno (Módulo 11)
+    const formatearRutChileno = (valor) => {
+        let limpio = valor.replace(/[^0-9kK]/g, '').toUpperCase();
+        if (limpio.length > 9) limpio = limpio.slice(0, 9);
+        if (limpio.length <= 1) return limpio;
+
+        const dv = limpio.slice(-1);
+        const cuerpo = limpio.slice(0, -1);
+        let cuerpoFormateado = '';
+
+        for (let i = cuerpo.length - 1, j = 1; i >= 0; i--, j++) {
+            cuerpoFormateado = cuerpo.charAt(i) + cuerpoFormateado;
+            if (j % 3 === 0 && i !== 0) {
+                cuerpoFormateado = '.' + cuerpoFormateado;
+            }
+        }
+        return `${cuerpoFormateado}-${dv}`;
+    };
+
+    const validarRutChileno = (rutCompleto) => {
+        const limpio = rutCompleto.replace(/[^0-9kK]/g, '').toUpperCase();
+        if (limpio.length < 8) return false;
+        const cuerpo = limpio.slice(0, -1);
+        const dv = limpio.slice(-1);
+
+        let suma = 0;
+        let multiplo = 2;
+        for (let i = cuerpo.length - 1; i >= 0; i--) {
+            suma += multiplo * parseInt(cuerpo.charAt(i), 10);
+            multiplo = multiplo < 7 ? multiplo + 1 : 2;
+        }
+        const dvEsperado = 11 - (suma % 11);
+        let dvCalc = dvEsperado === 11 ? '0' : dvEsperado === 10 ? 'K' : dvEsperado.toString();
+        return dv === dvCalc;
+    };
+
+    const handleRutChange = (e) => {
+        setFormOperador({ ...formOperador, rut: formatearRutChileno(e.target.value) });
+    };
+
+    // Guardar Maquinaria
     const crearMaquinaria = async (e) => {
         e.preventDefault();
+        const regexChilena = /^[A-Z]{2}-[A-Z]{2}-[0-9]{2}$/;
+        if (!regexChilena.test(formMaquina.patente)) {
+            setMensaje({ 
+                tipo: 'error', 
+                texto: 'Ingresa una patente válida (ejemplo: BK-PT-45).' 
+            });
+            return;
+        }
+
         try {
             await axios.post('/api/maquinarias/', {
                 ...formMaquina,
@@ -119,8 +195,21 @@ export default function VistaAdmin() {
         }
     };
 
+    // Guardar Operador
     const crearOperador = async (e) => {
         e.preventDefault();
+
+        if (!validarRutChileno(formOperador.rut)) {
+            setMensaje({ tipo: 'error', texto: 'El RUT ingresado no es válido. Revisa los dígitos.' });
+            return;
+        }
+
+        const anioSeleccionado = new Date(formOperador.fecha_vencimiento_licencia).getFullYear();
+        if (anioSeleccionado < anioActual || anioSeleccionado > anioActual + 10) {
+            setMensaje({ tipo: 'error', texto: `Selecciona una fecha de vencimiento vigente (entre ${anioActual} y ${anioActual + 10}).` });
+            return;
+        }
+
         try {
             await axios.post('/api/operadores/', formOperador);
             setMensaje({ tipo: 'exito', texto: `Operador ${formOperador.nombre} ${formOperador.apellido} registrado.` });
@@ -128,24 +217,42 @@ export default function VistaAdmin() {
             setFormOperador({ nombre: '', apellido: '', rut: '', TipoLicencia: 'Clase D', fecha_vencimiento_licencia: '' });
             cargarDatos();
         } catch (err) {
-            setMensaje({ tipo: 'error', texto: 'Error al registrar el operador.' });
+            setMensaje({ tipo: 'error', texto: 'Error al registrar el operador. Asegúrate de tener el endpoint /api/operadores/ configurado.' });
         }
     };
 
+    // Guardar Gasto
     const crearGasto = async (e) => {
         e.preventDefault();
+
+        if (!formGasto.id_maquina) {
+            setMensaje({ tipo: 'error', texto: 'Debes seleccionar una maquinaria para imputar el gasto.' });
+            return;
+        }
+
+        const montoNum = parseFloat(formGasto.monto);
+        if (!montoNum || montoNum <= 0) {
+            setMensaje({ tipo: 'error', texto: 'Ingresa un monto de gasto válido mayor a cero.' });
+            return;
+        }
+
         try {
-            await axios.post('/api/gastos/', {
-                ...formGasto,
-                id_maquina: parseInt(formGasto.id_maquina) || null,
-                monto: parseFloat(formGasto.monto) || 0
-            });
+            const payload = {
+                id_maquina: parseInt(formGasto.id_maquina, 10),
+                categoria_gasto: formGasto.categoria_gasto,
+                tipoGasto: formGasto.categoria_gasto,
+                monto: montoNum,
+                fecha: formGasto.fecha
+            };
+
+            await axios.post('/api/gastos/', payload);
             setMensaje({ tipo: 'exito', texto: 'Gasto operativo registrado con éxito.' });
             setModalNuevoGasto(false);
-            setFormGasto({ id_maquina: '', tipoGasto: 'Repuesto', monto: '', fecha: new Date().toISOString().split('T')[0] });
+            setFormGasto({ id_maquina: '', categoria_gasto: 'Repuesto', monto: '', fecha: new Date().toISOString().split('T')[0] });
             cargarDatos();
         } catch (err) {
-            setMensaje({ tipo: 'error', texto: 'Error al registrar el gasto.' });
+            console.error(err);
+            setMensaje({ tipo: 'error', texto: 'Error al registrar el gasto en el servidor. Verifica el endpoint /api/gastos/.' });
         }
     };
 
@@ -302,6 +409,35 @@ export default function VistaAdmin() {
         cursor: 'pointer'
     });
 
+    // Componente de alerta reutilizable y contenido
+    const AlertaModal = () => {
+        if (!mensaje.texto) return null;
+        return (
+            <div style={{
+                padding: '9px 12px',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: '700',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: mensaje.tipo === 'exito' ? '#dcfce7' : '#fee2e2',
+                color: mensaje.tipo === 'exito' ? '#14532d' : '#991b1b',
+                border: `1px solid ${mensaje.tipo === 'exito' ? '#86efac' : '#fca5a5'}`
+            }}>
+                <span>{mensaje.texto}</span>
+                <button
+                    type="button"
+                    onClick={() => setMensaje({ tipo: '', texto: '' })}
+                    style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+                >
+                    ✕
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div style={{
             minHeight: '100vh',
@@ -355,7 +491,7 @@ export default function VistaAdmin() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {/* Menú Desplegable de Nuevo Registro */}
+                        {/* Menú Desplegable */}
                         <div ref={dropdownRef} style={{ position: 'relative' }}>
                             <button
                                 type="button"
@@ -371,7 +507,6 @@ export default function VistaAdmin() {
                                     borderRadius: '4px',
                                     fontSize: '11px',
                                     fontWeight: '700',
-                                    letterSpacing: '0.02em',
                                     cursor: 'pointer',
                                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                                 }}
@@ -382,7 +517,6 @@ export default function VistaAdmin() {
                                 </span>
                             </button>
 
-                            {/* Dropdown flotante */}
                             {menuAccionesAbierto && (
                                 <div style={{
                                     position: 'absolute',
@@ -401,24 +535,8 @@ export default function VistaAdmin() {
                                 }}>
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setModalNuevaMaquina(true);
-                                            setMenuAccionesAbierto(false);
-                                        }}
-                                        style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            textAlign: 'left',
-                                            fontSize: '12px',
-                                            fontWeight: '600',
-                                            color: '#0f172a',
-                                            cursor: 'pointer',
-                                            borderBottom: '1px solid #f1f5f9',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}
+                                        onClick={() => { setModalNuevaMaquina(true); setMenuAccionesAbierto(false); setMensaje({ tipo: '', texto: '' }); }}
+                                        style={{ padding: '10px 14px', backgroundColor: 'transparent', border: 'none', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}
                                         onMouseEnter={(e) => e.target.style.backgroundColor = '#f8fafc'}
                                         onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                                     >
@@ -428,24 +546,8 @@ export default function VistaAdmin() {
 
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setModalNuevoOperador(true);
-                                            setMenuAccionesAbierto(false);
-                                        }}
-                                        style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            textAlign: 'left',
-                                            fontSize: '12px',
-                                            fontWeight: '600',
-                                            color: '#0f172a',
-                                            cursor: 'pointer',
-                                            borderBottom: '1px solid #f1f5f9',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}
+                                        onClick={() => { setModalNuevoOperador(true); setMenuAccionesAbierto(false); setMensaje({ tipo: '', texto: '' }); }}
+                                        style={{ padding: '10px 14px', backgroundColor: 'transparent', border: 'none', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}
                                         onMouseEnter={(e) => e.target.style.backgroundColor = '#f8fafc'}
                                         onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                                     >
@@ -455,23 +557,8 @@ export default function VistaAdmin() {
 
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setModalNuevoGasto(true);
-                                            setMenuAccionesAbierto(false);
-                                        }}
-                                        style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            textAlign: 'left',
-                                            fontSize: '12px',
-                                            fontWeight: '600',
-                                            color: '#0f172a',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}
+                                        onClick={() => { setModalNuevoGasto(true); setMenuAccionesAbierto(false); setMensaje({ tipo: '', texto: '' }); }}
+                                        style={{ padding: '10px 14px', backgroundColor: 'transparent', border: 'none', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                                         onMouseEnter={(e) => e.target.style.backgroundColor = '#f8fafc'}
                                         onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                                     >
@@ -482,20 +569,10 @@ export default function VistaAdmin() {
                             )}
                         </div>
 
-                        {/* Botón Sincronizar discreto */}
                         <button
                             type="button"
                             onClick={cargarDatos}
-                            style={{
-                                padding: '7px 12px',
-                                backgroundColor: '#1e293b',
-                                color: '#94a3b8',
-                                border: '1px solid #334155',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                cursor: 'pointer',
-                                fontWeight: '600'
-                            }}
+                            style={{ padding: '7px 12px', backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: '600' }}
                         >
                             Sincronizar
                         </button>
@@ -503,13 +580,7 @@ export default function VistaAdmin() {
                 </div>
 
                 {/* Navegación por pestañas */}
-                <div style={{
-                    backgroundColor: '#f1f5f9',
-                    borderBottom: '1px solid #cbd5e1',
-                    display: 'flex',
-                    padding: '0 12px',
-                    gap: '4px'
-                }}>
+                <div style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #cbd5e1', display: 'flex', padding: '0 12px', gap: '4px' }}>
                     <button onClick={() => setTabActiva('dashboard')} style={estiloTab(tabActiva === 'dashboard')}>
                         Dashboard / Semáforo
                     </button>
@@ -527,8 +598,8 @@ export default function VistaAdmin() {
                     </button>
                 </div>
 
-                {/* Notificaciones */}
-                {mensaje.texto && (
+                {/* Notificación para la pantalla principal (cuando los modales están cerrados) */}
+                {!modalNuevaMaquina && !modalNuevoOperador && !modalNuevoGasto && mensaje.texto && (
                     <div style={{
                         margin: '14px 22px 0 22px',
                         padding: '9px 13px',
@@ -544,10 +615,9 @@ export default function VistaAdmin() {
                 )}
 
                 <div style={{ padding: '20px 22px' }}>
-                    {/* TAB 1: DASHBOARD / KPIS / SEMÁFORO */}
+                    {/* TAB 1: DASHBOARD */}
                     {tabActiva === 'dashboard' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {/* Tarjetas KPI */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
                                 {[
                                     { label: 'Flota Total', val: total, color: '#f8fafc', sub: 'Inventario registrado' },
@@ -555,104 +625,42 @@ export default function VistaAdmin() {
                                     { label: 'Requiere Mant.', val: requierenMantencion, color: '#f87171', sub: 'Pendientes de taller' },
                                     { label: 'Alertas Pauta', val: alertas, color: '#fbbf24', sub: 'Ventana 450h / 950h' }
                                 ].map((k, i) => (
-                                    <div key={i} style={{
-                                        backgroundColor: '#0f172a',
-                                        border: '1px solid #1e293b',
-                                        borderRadius: '4px',
-                                        padding: '10px 14px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        justifyContent: 'space-between'
-                                    }}>
+                                    <div key={i} style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', padding: '10px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                            <span style={{ fontSize: '10px', fontWeight: '800', color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                                {k.label}
-                                            </span>
-                                            <span style={{ fontSize: '18px', fontWeight: '800', color: k.color, fontFamily: 'Consolas, monospace' }}>
-                                                {k.val}
-                                            </span>
+                                            <span style={{ fontSize: '10px', fontWeight: '800', color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</span>
+                                            <span style={{ fontSize: '18px', fontWeight: '800', color: k.color, fontFamily: 'Consolas, monospace' }}>{k.val}</span>
                                         </div>
-                                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '500', marginTop: '4px' }}>
-                                            {k.sub}
-                                        </span>
+                                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '500', marginTop: '4px' }}>{k.sub}</span>
                                     </div>
                                 ))}
                             </div>
 
-                            {/* Alerta de Licencias de Conducir (BPMN 1.3.1.4) */}
                             {licenciasPorVencer > 0 && (
-                                <div style={{
-                                    backgroundColor: '#fffbeb',
-                                    border: '1px solid #fde68a',
-                                    borderRadius: '4px',
-                                    padding: '10px 14px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
-                                }}>
+                                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '16px' }}>⚠️</span>
+                                        <span style={{ fontSize: '16px' }}></span>
                                         <span style={{ fontSize: '12px', fontWeight: '600', color: '#92400e' }}>
                                             Hay {licenciasPorVencer} operador(es) con licencia por vencer o vencida. Revisa la pestaña de Operadores.
                                         </span>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTabActiva('operadores')}
-                                        style={{
-                                            backgroundColor: '#d97706',
-                                            color: '#ffffff',
-                                            border: 'none',
-                                            padding: '4px 10px',
-                                            borderRadius: '3px',
-                                            fontSize: '11px',
-                                            fontWeight: '700',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
+                                    <button type="button" onClick={() => setTabActiva('operadores')} style={{ backgroundColor: '#d97706', color: '#ffffff', border: 'none', padding: '4px 10px', borderRadius: '3px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
                                         Revisar
                                     </button>
                                 </div>
                             )}
 
-                            {/* Barra de Filtros */}
-                            <div style={{
-                                backgroundColor: '#f8fafc',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '4px',
-                                padding: '9px 12px',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                gap: '12px'
-                            }}>
+                            <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '9px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                                 <input
                                     type="text"
-                                    placeholder="Filtrar por patente, equipo o modelo..."
+                                    placeholder="Filtrar por patente (ej: BK-PT-45), equipo o modelo..."
                                     value={busqueda}
                                     onChange={(e) => setBusqueda(e.target.value)}
-                                    style={{
-                                        flex: 1,
-                                        maxWidth: '320px',
-                                        padding: '6px 10px',
-                                        backgroundColor: '#ffffff',
-                                        border: '1px solid #cbd5e1',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        outline: 'none'
-                                    }}
+                                    style={{ flex: 1, maxWidth: '340px', padding: '6px 10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', outline: 'none' }}
                                 />
                                 <select
                                     value={filtroEstado}
                                     onChange={(e) => setFiltroEstado(e.target.value)}
-                                    style={{
-                                        padding: '6px 10px',
-                                        backgroundColor: '#ffffff',
-                                        border: '1px solid #cbd5e1',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        fontWeight: '600'
-                                    }}
+                                    style={{ padding: '6px 10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}
                                 >
                                     <option value="TODOS">Todos los estados</option>
                                     <option value="OPERATIVA">Operativas / Disponibles</option>
@@ -660,12 +668,11 @@ export default function VistaAdmin() {
                                 </select>
                             </div>
 
-                            {/* Tabla Semáforo */}
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                                     <thead>
                                         <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase' }}>
-                                            <th style={{ padding: '8px 10px', width: '90px' }}>Patente</th>
+                                            <th style={{ padding: '8px 10px', width: '100px' }}>Patente</th>
                                             <th style={{ padding: '8px 10px' }}>Maquinaria</th>
                                             <th style={{ padding: '8px 10px', width: '110px' }}>Horómetro</th>
                                             <th style={{ padding: '8px 10px', width: '250px' }}>Semáforo Preventivo</th>
@@ -682,7 +689,7 @@ export default function VistaAdmin() {
                                                 const mant = calcularMantencion(m.horometro_actual);
                                                 return (
                                                     <tr key={m.id_maquina} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                        <td style={{ padding: '8px 10px', fontWeight: '700', fontFamily: 'Consolas, monospace' }}>{m.patente}</td>
+                                                        <td style={{ padding: '8px 10px', fontWeight: '700', fontFamily: 'Consolas, monospace', letterSpacing: '0.04em' }}>{m.patente}</td>
                                                         <td style={{ padding: '8px 10px' }}>
                                                             <span style={{ fontWeight: '600', color: '#0f172a' }}>{m.tipo}</span>
                                                             <span style={{ color: '#64748b', marginLeft: '6px', fontSize: '11px' }}>{m.marca} {m.modelo}</span>
@@ -699,9 +706,7 @@ export default function VistaAdmin() {
                                                                 <div style={{ width: `${mant.porcentaje}%`, height: '100%', backgroundColor: mant.bar }} />
                                                             </div>
                                                         </td>
-                                                        <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                                            {renderBadgeEstado(m.estado)}
-                                                        </td>
+                                                        <td style={{ padding: '8px 10px', textAlign: 'center' }}>{renderBadgeEstado(m.estado)}</td>
                                                     </tr>
                                                 );
                                             })
@@ -712,7 +717,7 @@ export default function VistaAdmin() {
                         </div>
                     )}
 
-                    {/* TAB 2: INVENTARIO DE EQUIPOS */}
+                    {/* TAB 2: INVENTARIO */}
                     {tabActiva === 'maquinarias' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -725,7 +730,7 @@ export default function VistaAdmin() {
                                     <thead>
                                         <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase' }}>
                                             <th style={{ padding: '8px 10px', width: '50px' }}>ID</th>
-                                            <th style={{ padding: '8px 10px', width: '100px' }}>Patente</th>
+                                            <th style={{ padding: '8px 10px', width: '110px' }}>Patente</th>
                                             <th style={{ padding: '8px 10px' }}>Tipo</th>
                                             <th style={{ padding: '8px 10px' }}>Marca y Modelo</th>
                                             <th style={{ padding: '8px 10px', width: '120px' }}>Horómetro Actual</th>
@@ -736,7 +741,7 @@ export default function VistaAdmin() {
                                         {maquinarias.map((m) => (
                                             <tr key={m.id_maquina} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                 <td style={{ padding: '8px 10px', color: '#64748b' }}>#{m.id_maquina}</td>
-                                                <td style={{ padding: '8px 10px', fontWeight: '700', fontFamily: 'Consolas, monospace' }}>{m.patente}</td>
+                                                <td style={{ padding: '8px 10px', fontWeight: '700', fontFamily: 'Consolas, monospace', letterSpacing: '0.04em' }}>{m.patente}</td>
                                                 <td style={{ padding: '8px 10px', fontWeight: '600' }}>{m.tipo}</td>
                                                 <td style={{ padding: '8px 10px' }}>{m.marca} {m.modelo}</td>
                                                 <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace', fontWeight: '700' }}>
@@ -769,7 +774,7 @@ export default function VistaAdmin() {
                         </div>
                     )}
 
-                    {/* TAB 3: OPERADORES Y LICENCIAS (BPMN 1.3.1.4) */}
+                    {/* TAB 3: OPERADORES */}
                     {tabActiva === 'operadores' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -782,7 +787,7 @@ export default function VistaAdmin() {
                                     <thead>
                                         <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase' }}>
                                             <th style={{ padding: '8px 10px' }}>Nombre y Apellido</th>
-                                            <th style={{ padding: '8px 10px', width: '120px' }}>RUT</th>
+                                            <th style={{ padding: '8px 10px', width: '130px' }}>RUT</th>
                                             <th style={{ padding: '8px 10px', width: '110px' }}>Clase Licencia</th>
                                             <th style={{ padding: '8px 10px', width: '130px' }}>Vencimiento</th>
                                             <th style={{ padding: '8px 10px', width: '160px', textAlign: 'center' }}>Vigencia para Faena</th>
@@ -796,22 +801,12 @@ export default function VistaAdmin() {
                                                 const lic = verificarLicencia(op.fecha_vencimiento_licencia);
                                                 return (
                                                     <tr key={op.id_operador} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                        <td style={{ padding: '8px 10px', fontWeight: '600', color: '#0f172a' }}>
-                                                            {op.nombre} {op.apellido}
-                                                        </td>
+                                                        <td style={{ padding: '8px 10px', fontWeight: '600', color: '#0f172a' }}>{op.nombre} {op.apellido}</td>
                                                         <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace' }}>{op.rut || '—'}</td>
                                                         <td style={{ padding: '8px 10px', fontWeight: '600' }}>{op.TipoLicencia || 'Clase D'}</td>
                                                         <td style={{ padding: '8px 10px' }}>{op.fecha_vencimiento_licencia || 'No asignada'}</td>
                                                         <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                                            <span style={{
-                                                                display: 'inline-block',
-                                                                padding: '2px 8px',
-                                                                borderRadius: '3px',
-                                                                fontSize: '10px',
-                                                                fontWeight: '700',
-                                                                backgroundColor: lic.bg,
-                                                                color: lic.color
-                                                            }}>
+                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '3px', fontSize: '10px', fontWeight: '700', backgroundColor: lic.bg, color: lic.color }}>
                                                                 {lic.estado}
                                                             </span>
                                                         </td>
@@ -825,7 +820,7 @@ export default function VistaAdmin() {
                         </div>
                     )}
 
-                    {/* TAB 4: TURNOS RECIBIDOS (CONCILIACIÓN) */}
+                    {/* TAB 4: REPORTES */}
                     {tabActiva === 'reportes' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -859,23 +854,11 @@ export default function VistaAdmin() {
                                                             {maqEncontrada ? `[${maqEncontrada.patente}] ${maqEncontrada.tipo}` : `Equipo #${r.id_maquina}`}
                                                         </td>
                                                         <td style={{ padding: '8px 10px' }}>{r.hora_entrada} a {r.hora_salida}</td>
-                                                        <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace' }}>
-                                                            {r.horometro_inicial}h → {r.horometro_final}h
-                                                        </td>
+                                                        <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace' }}>{r.horometro_inicial}h → {r.horometro_final}h</td>
                                                         <td style={{ padding: '8px 10px', fontWeight: '700', color: '#0f172a' }}>{r.horas_trabajadas} hrs</td>
-                                                        <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace' }}>
-                                                            {r.combustible_litros || r.combustible || 0} L
-                                                        </td>
+                                                        <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace' }}>{r.combustible_litros || r.combustible || 0} L</td>
                                                         <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                                            <span style={{
-                                                                display: 'inline-block',
-                                                                padding: '2px 6px',
-                                                                borderRadius: '3px',
-                                                                fontSize: '10px',
-                                                                fontWeight: '700',
-                                                                backgroundColor: r.firmado ? '#dcfce7' : '#fee2e2',
-                                                                color: r.firmado ? '#14532d' : '#991b1b'
-                                                            }}>
+                                                            <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: '3px', fontSize: '10px', fontWeight: '700', backgroundColor: r.firmado ? '#dcfce7' : '#fee2e2', color: r.firmado ? '#14532d' : '#991b1b' }}>
                                                                 {r.firmado ? 'CONFORME' : 'PENDIENTE'}
                                                             </span>
                                                         </td>
@@ -889,7 +872,7 @@ export default function VistaAdmin() {
                         </div>
                     )}
 
-                    {/* TAB 5: GASTOS OPERATIVOS (BPMN 1.3.1.6) */}
+                    {/* TAB 5: GASTOS */}
                     {tabActiva === 'gastos' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -908,7 +891,7 @@ export default function VistaAdmin() {
                                         <tr style={{ backgroundColor: '#0f172a', color: '#ffffff', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase' }}>
                                             <th style={{ padding: '8px 10px', width: '90px' }}>Fecha</th>
                                             <th style={{ padding: '8px 10px' }}>Maquinaria Imputada</th>
-                                            <th style={{ padding: '8px 10px' }}>Concepto / Tipo</th>
+                                            <th style={{ padding: '8px 10px' }}>Concepto</th>
                                             <th style={{ padding: '8px 10px', textAlign: 'right', width: '130px' }}>Monto ($)</th>
                                         </tr>
                                     </thead>
@@ -924,7 +907,7 @@ export default function VistaAdmin() {
                                                         <td style={{ padding: '8px 10px', fontFamily: 'Consolas, monospace' }}>
                                                             {maq ? `[${maq.patente}] ${maq.tipo}` : 'Gasto General'}
                                                         </td>
-                                                        <td style={{ padding: '8px 10px' }}>{g.tipoGasto || 'Insumo'}</td>
+                                                        <td style={{ padding: '8px 10px' }}>{g.categoria_gasto || g.tipoGasto || 'Insumo'}</td>
                                                         <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '700', fontFamily: 'Consolas, monospace' }}>
                                                             ${(parseFloat(g.monto) || 0).toLocaleString('es-CL')}
                                                         </td>
@@ -941,17 +924,25 @@ export default function VistaAdmin() {
 
                 {/* MODAL 1: REGISTRAR MAQUINARIA */}
                 {modalNuevaMaquina && (
-                    <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex',
-                        justifyContent: 'center', alignItems: 'center', zIndex: 9999
-                    }}>
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
                         <div style={{ backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%', maxWidth: '440px', padding: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-                            <h2 style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 14px 0', color: '#0f172a' }}>Registrar Nueva Maquinaria</h2>
+                            <h2 style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 10px 0', color: '#0f172a' }}>Registrar Nueva Maquinaria</h2>
+                            
+                            {/* Alerta visible dentro del modal */}
+                            <AlertaModal />
+
                             <form onSubmit={crearMaquinaria} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Patente / Código</label>
-                                    <input type="text" required value={formMaquina.patente} onChange={(e) => setFormMaquina({ ...formMaquina, patente: e.target.value.toUpperCase() })} placeholder="Ej: EX-104" style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
+                                    <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Patente</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        maxLength="8"
+                                        value={formMaquina.patente} 
+                                        onChange={handlePatenteChange} 
+                                        placeholder="Ej: BK-PT-45" 
+                                        style={{ width: '100%', padding: '7px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box', fontFamily: 'Consolas, monospace', fontSize: '13px', fontWeight: '700' }} 
+                                    />
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                     <div>
@@ -982,15 +973,15 @@ export default function VistaAdmin() {
                     </div>
                 )}
 
-                {/* MODAL 2: REGISTRAR OPERADOR Y LICENCIA */}
+                {/* MODAL 2: REGISTRAR OPERADOR */}
                 {modalNuevoOperador && (
-                    <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex',
-                        justifyContent: 'center', alignItems: 'center', zIndex: 9999
-                    }}>
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
                         <div style={{ backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%', maxWidth: '400px', padding: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-                            <h2 style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 14px 0', color: '#0f172a' }}>Registrar Operador</h2>
+                            <h2 style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 10px 0', color: '#0f172a' }}>Registrar Operador</h2>
+                            
+                            {/* Alerta visible dentro del modal */}
+                            <AlertaModal />
+
                             <form onSubmit={crearOperador} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                     <div>
@@ -1003,8 +994,16 @@ export default function VistaAdmin() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>RUT</label>
-                                    <input type="text" required value={formOperador.rut} onChange={(e) => setFormOperador({ ...formOperador, rut: e.target.value })} placeholder="12.345.678-9" style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
+                                    <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>RUT Chileno</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        maxLength="12"
+                                        value={formOperador.rut} 
+                                        onChange={handleRutChange} 
+                                        placeholder="12.345.678-9" 
+                                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box', fontFamily: 'Consolas, monospace', fontWeight: '700' }} 
+                                    />
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                     <div>
@@ -1017,7 +1016,15 @@ export default function VistaAdmin() {
                                     </div>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Vencimiento Licencia</label>
-                                        <input type="date" required value={formOperador.fecha_vencimiento_licencia} onChange={(e) => setFormOperador({ ...formOperador, fecha_vencimiento_licencia: e.target.value })} style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
+                                        <input 
+                                            type="date" 
+                                            required 
+                                            min={fechaMinLicencia}
+                                            max={fechaMaxLicencia}
+                                            value={formOperador.fecha_vencimiento_licencia} 
+                                            onChange={(e) => setFormOperador({ ...formOperador, fecha_vencimiento_licencia: e.target.value })} 
+                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} 
+                                        />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
@@ -1029,20 +1036,25 @@ export default function VistaAdmin() {
                     </div>
                 )}
 
-                {/* MODAL 3: REGISTRAR GASTO OPERATIVO */}
+                {/* MODAL 3: REGISTRAR GASTO */}
                 {modalNuevoGasto && (
-                    <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex',
-                        justifyContent: 'center', alignItems: 'center', zIndex: 9999
-                    }}>
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
                         <div style={{ backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%', maxWidth: '400px', padding: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-                            <h2 style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 14px 0', color: '#0f172a' }}>Registrar Gasto Operativo</h2>
+                            <h2 style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 10px 0', color: '#0f172a' }}>Registrar Gasto Operativo</h2>
+                            
+                            {/* Alerta visible dentro del modal */}
+                            <AlertaModal />
+
                             <form onSubmit={crearGasto} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Maquinaria Asociada</label>
-                                    <select value={formGasto.id_maquina} onChange={(e) => setFormGasto({ ...formGasto, id_maquina: e.target.value })} style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}>
-                                        <option value="">Gasto General / No imputado</option>
+                                    <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Maquinaria Imputada</label>
+                                    <select 
+                                        required
+                                        value={formGasto.id_maquina} 
+                                        onChange={(e) => setFormGasto({ ...formGasto, id_maquina: e.target.value })} 
+                                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                                    >
+                                        <option value="">Selecciona una máquina...</option>
                                         {maquinarias.map((m) => (
                                             <option key={m.id_maquina} value={m.id_maquina}>[{m.patente}] {m.tipo}</option>
                                         ))}
@@ -1051,7 +1063,7 @@ export default function VistaAdmin() {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Concepto</label>
-                                        <select value={formGasto.tipoGasto} onChange={(e) => setFormGasto({ ...formGasto, tipoGasto: e.target.value })} style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}>
+                                        <select value={formGasto.categoria_gasto} onChange={(e) => setFormGasto({ ...formGasto, categoria_gasto: e.target.value })} style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}>
                                             <option value="Repuesto">Repuesto</option>
                                             <option value="Lubricante / Filtro">Lubricante / Filtro</option>
                                             <option value="Taller Externo">Taller Externo</option>
@@ -1060,7 +1072,7 @@ export default function VistaAdmin() {
                                     </div>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Monto ($CLP)</label>
-                                        <input type="number" required value={formGasto.monto} onChange={(e) => setFormGasto({ ...formGasto, monto: e.target.value })} placeholder="Ej: 85000" style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
+                                        <input type="number" required min="1" value={formGasto.monto} onChange={(e) => setFormGasto({ ...formGasto, monto: e.target.value })} placeholder="Ej: 85000" style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
