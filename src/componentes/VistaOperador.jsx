@@ -3,824 +3,729 @@ import axios from '../api/axios';
 
 export default function VistaOperador({ operador }) {
     const [maquinarias, setMaquinarias] = useState([]);
-    const [idMaquina, setIdMaquina] = useState('');
-    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+    const [reportesPrevios, setReportesPrevios] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [enviando, setEnviando] = useState(false);
+    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
+
+    // Campos de turno
+    const [idMaquinaSeleccionada, setIdMaquinaSeleccionada] = useState('');
     const [horaEntrada, setHoraEntrada] = useState('08:00');
     const [horaSalida, setHoraSalida] = useState('18:00');
-    const [horometroInicial, setHorometroInicial] = useState('0.0');
+    const [horometroInicial, setHorometroInicial] = useState('');
     const [horometroFinal, setHorometroFinal] = useState('');
-    
-    // Extensión combustible
+
+    // Combustible opcional con validación estricta
     const [cargoCombustible, setCargoCombustible] = useState(false);
-    const [combustible, setCombustible] = useState('0');
-    
-    // Validación: firma en pantalla o foto del papel
-    const [modoFirma, setModoFirma] = useState('digital');
-    const [archivoFoto, setArchivoFoto] = useState(null);
-    const [firmadoCanvas, setFirmadoCanvas] = useState(false);
+    const [combustibleLitros, setCombustibleLitros] = useState('');
 
-    // Mensaje global y errores en tiempo real por campo
-    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
-    const [errores, setErrores] = useState({});
-    const [guardando, setGuardando] = useState(false);
+    const [observaciones, setObservaciones] = useState('');
 
+    // Método de validación: 'firma' o 'foto'
+    const [metodoValidacion, setMetodoValidacion] = useState('firma');
+    const [archivoComprobante, setArchivoComprobante] = useState(null);
+
+    // Canvas Firma Digital
     const canvasRef = useRef(null);
-    const dibujandoRef = useRef(false);
+    const [dibujando, setDibujando] = useState(false);
+    const [tieneFirma, setTieneFirma] = useState(false);
 
-    const estaValidado = modoFirma === 'digital' ? firmadoCanvas : Boolean(archivoFoto);
+    const cargarDatosOperador = async () => {
+        setCargando(true);
+        try {
+            const [resMaq, resRep] = await Promise.all([
+                axios.get('/api/maquinarias/'),
+                axios.get('/api/reports/')
+            ]);
+            const listaMaq = resMaq.data || [];
+            setMaquinarias(listaMaq);
+            setReportesPrevios(resRep.data || []);
+
+            if (listaMaq.length > 0 && !idMaquinaSeleccionada) {
+                setIdMaquinaSeleccionada(listaMaq[0].id_maquina);
+                setHorometroInicial(listaMaq[0].horometro_actual || 0);
+            }
+        } catch (err) {
+            console.error('Error al cargar datos:', err);
+        } finally {
+            setCargando(false);
+        }
+    };
 
     useEffect(() => {
-        axios.get('/api/maquinarias/')
-            .then((res) => {
-                setMaquinarias(res.data);
-                if (res.data.length > 0) {
-                    seleccionarMaquina(res.data[0]);
-                }
-            })
-            .catch((err) => console.error(err));
+        cargarDatosOperador();
     }, []);
 
-    const seleccionarMaquina = (maq) => {
-        setIdMaquina(maq.id_maquina);
-        if (maq.horometro_actual !== undefined) {
-            setHorometroInicial(maq.horometro_actual.toString());
+    const obtenerPatente = (idMaquina, detalle) => {
+        if (detalle && detalle.patente) return `${detalle.patente} (${detalle.tipo || ''})`;
+        const encontrada = maquinarias.find((m) => m.id_maquina === idMaquina || m.id === idMaquina);
+        return encontrada ? `${encontrada.patente} (${encontrada.tipo})` : `Equipo #${idMaquina || 'S/I'}`;
+    };
+
+    const manejarCambioMaquina = (e) => {
+        const id = e.target.value;
+        setIdMaquinaSeleccionada(id);
+        const seleccionada = maquinarias.find((m) => m.id_maquina === parseInt(id, 10));
+        if (seleccionada) {
+            setHorometroInicial(seleccionada.horometro_actual || 0);
+            setHorometroFinal('');
         }
     };
 
-    const ini = parseFloat(horometroInicial) || 0;
-    const fin = parseFloat(horometroFinal) || 0;
-    const litComb = cargoCombustible ? (parseFloat(combustible) || 0) : 0;
-
-    const horasCalculadas = (fin > ini && ini >= 0 && fin >= 0)
-        ? Math.round((fin - ini) * 10) / 10
-        : 0;
-
-    // Cálculo de la duración del turno de reloj (en horas)
-    const getHorasTurnoReloj = () => {
-        if (!horaEntrada || !horaSalida) return 0;
-        const [hE, mE] = horaEntrada.split(':').map(Number);
-        const [hS, mS] = horaSalida.split(':').map(Number);
-        const minEntrada = hE * 60 + mE;
-        const minSalida = hS * 60 + mS;
-        if (minSalida <= minEntrada) return 0;
-        return (minSalida - minEntrada) / 60;
-    };
-
-    const horasTurnoReloj = getHorasTurnoReloj();
-
-    // Validación inline inmediata
-    const validarCampos = () => {
-        const nuevosErrores = {};
-
-        if (!horaEntrada || !horaSalida) {
-            nuevosErrores.horario = 'Completa ambas horas de la jornada.';
-        } else {
-            const [hE, mE] = horaEntrada.split(':').map(Number);
-            const [hS, mS] = horaSalida.split(':').map(Number);
-            const minEntrada = hE * 60 + mE;
-            const minSalida = hS * 60 + mS;
-
-            if (minSalida <= minEntrada) {
-                nuevosErrores.horario = 'La salida debe ser posterior a la entrada.';
-            } else if ((minSalida - minEntrada) / 60 > 24) {
-                nuevosErrores.horario = 'El turno no puede exceder las 24 hrs.';
-            }
-        }
-
-        if (horometroFinal !== '') {
-            if (fin < 0) {
-                nuevosErrores.horometroFinal = 'No puedes poner valores negativos.';
-            } else if (fin <= ini) {
-                nuevosErrores.horometroFinal = `El horómetro final debe ser mayor a ${ini}.`
-            } else if (horasCalculadas > 24) {
-                nuevosErrores.horometroFinal = 'El turno no puede pasar de 24 horas continuas.';
-            } else if (horasTurnoReloj > 0 && horasCalculadas > horasTurnoReloj) {
-                nuevosErrores.horometroFinal = `Las horas de máquina (${horasCalculadas} hrs) superan el tiempo del turno (${horasTurnoReloj.toFixed(1)} hrs).`;
-            }
-        } else {
-            nuevosErrores.horometroFinal = 'Ingresa el horómetro de cierre.';
-        }
-
-        if (cargoCombustible && litComb < 0) {
-            nuevosErrores.combustible = 'Los litros no pueden ser negativos.';
-        }
-
-        if (!estaValidado) {
-            nuevosErrores.firma = modoFirma === 'digital'
-                ? 'Falta firma del supervisor en el recuadro.'
-                : 'Falta adjuntar la foto del reporte en papel.';
-        }
-
-        setErrores(nuevosErrores);
-        return Object.keys(nuevosErrores).length === 0;
-    };
-
-    // Funciones de dibujo precisas
-    const getCoordenadas = (e) => {
-        const canvas = canvasRef.current;
-        if (!canvas) return { x: 0, y: 0 };
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return {
-            x: clientX - rect.left,
-            y: clientY - rect.top
-        };
-    };
-
+    // Canvas
     const iniciarDibujo = (e) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        const { x, y } = getCoordenadas(e);
-        
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+        const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+
         ctx.beginPath();
         ctx.moveTo(x, y);
-        dibujandoRef.current = true;
-    };
-
-    const terminarDibujo = () => {
-        if (!dibujandoRef.current) return;
-        dibujandoRef.current = false;
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.closePath();
-            setFirmadoCanvas(true);
-            setErrores((prev) => ({ ...prev, firma: null }));
-        }
+        setDibujando(true);
+        setTieneFirma(true);
     };
 
     const dibujar = (e) => {
-        if (!dibujandoRef.current) return;
+        if (!dibujando) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        const { x, y } = getCoordenadas(e);
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+        const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
 
-        ctx.lineWidth = 2.2;
+        ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
         ctx.strokeStyle = '#0f172a';
-
         ctx.lineTo(x, y);
         ctx.stroke();
     };
 
+    const detenerDibujo = () => {
+        setDibujando(false);
+    };
+
     const limpiarFirma = () => {
         const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.beginPath();
-            setFirmadoCanvas(false);
-        }
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setTieneFirma(false);
     };
 
-    const cambiarModo = (modo) => {
-        setModoFirma(modo);
-        setFirmadoCanvas(false);
-        setArchivoFoto(null);
-        setErrores((prev) => ({ ...prev, firma: null }));
-        if (modo === 'digital') {
-            setTimeout(() => limpiarFirma(), 50);
-        }
-    };
+    const hIni = parseFloat(horometroInicial) || 0;
+    const hFin = parseFloat(horometroFinal) || 0;
+    const horasCalculadas = hFin > hIni ? (hFin - hIni).toFixed(1) : '0.0';
 
-    const guardarReport = async (e) => {
+    const enviarParteDiario = async (e) => {
         e.preventDefault();
         setMensaje({ tipo: '', texto: '' });
 
-        if (!validarCampos()) {
-            setMensaje({ tipo: 'error', texto: 'Revisa los campos destacados antes de guardar.' });
+        if (!horaEntrada || !horaSalida) {
+            setMensaje({ tipo: 'error', texto: 'Debes indicar la hora de entrada y la hora de salida del turno.' });
             return;
         }
 
-        setGuardando(true);
-        const payload = {
-            id_contrato: 1,
-            id_operador: operador?.id_operador || 1,
-            id_maquina: parseInt(idMaquina),
-            id_hes: null,
-            fecha: fecha,
+        if (hFin <= hIni) {
+            setMensaje({ tipo: 'error', texto: 'El horómetro final debe ser mayor al horómetro inicial.' });
+            return;
+        }
+
+        // Validación estricta de combustible
+        let lts = 0;
+        if (cargoCombustible) {
+            lts = parseFloat(combustibleLitros);
+            if (isNaN(lts) || lts <= 0) {
+                setMensaje({ tipo: 'error', texto: 'La cantidad de litros cargados debe ser un número positivo mayor a 0.' });
+                return;
+            }
+        }
+
+        if (metodoValidacion === 'firma' && !tieneFirma) {
+            setMensaje({ tipo: 'error', texto: 'Falta la firma en pantalla o sube una foto del papel.' });
+            return;
+        }
+
+        if (metodoValidacion === 'foto' && !archivoComprobante) {
+            setMensaje({ tipo: 'error', texto: 'Falta adjuntar la foto del parte firmado.' });
+            return;
+        }
+
+        setEnviando(true);
+
+        const idOp = operador?.id_operador || operador?.id_usuario || operador?.id || 1;
+        const canvas = canvasRef.current;
+        const firmaBase64 = (metodoValidacion === 'firma' && canvas) ? canvas.toDataURL('image/png') : 'VALIDADO_POR_FOTO';
+
+        const payloadReporte = {
+            id_maquina: parseInt(idMaquinaSeleccionada, 10),
+            id_operador: parseInt(idOp, 10),
+            fecha: new Date().toISOString().split('T')[0],
             hora_entrada: horaEntrada,
             hora_salida: horaSalida,
-            horometro_inicial: ini,
-            horometro_final: fin,
-            horas_trabajadas: Math.round(horasCalculadas),
-            combustible_litros: litComb,
-            firmado: true
+            horometro_inicial: hIni,
+            horometro_final: hFin,
+            horas_trabajadas: parseFloat(horasCalculadas),
+            combustible_litros: lts,
+            observaciones: observaciones.trim() || 'Turno finalizado',
+            firmado: true,
+            estado_firma: true,
+            firma: firmaBase64,
+            firma_digital: firmaBase64
         };
 
         try {
-            await axios.post('/api/reports/', payload);
-            setMensaje({ tipo: 'exito', texto: 'Reporte de turno registrado con éxito.' });
-            setHorometroInicial(fin.toString());
+            await axios.post('/api/reports/', payloadReporte);
+
+            if (lts > 0) {
+                await axios.post('/api/gastos/', {
+                    id_maquina: parseInt(idMaquinaSeleccionada, 10),
+                    categoria_gasto: 'Combustible',
+                    tipo_gasto: 'Combustible',
+                    monto: lts * 1050,
+                    descripcion: `Carga de combustible: ${lts} Litros (${operador?.nombre || 'Operador'})`,
+                    fecha: new Date().toISOString().split('T')[0]
+                }).catch((errG) => console.warn('Gasto no registrado:', errG));
+            }
+
+            setMensaje({ tipo: 'exito', texto: '¡Turno guardado y firmado correctamente!' });
             setHorometroFinal('');
-            setCombustible('0');
             setCargoCombustible(false);
-            setArchivoFoto(null);
-            setErrores({});
-            if (modoFirma === 'digital') limpiarFirma();
+            setCombustibleLitros('');
+            setObservaciones('');
+            setArchivoComprobante(null);
+            limpiarFirma();
+            cargarDatosOperador();
         } catch (err) {
-            setMensaje({ tipo: 'error', texto: 'Error al conectar con el servidor.' });
+            const errorData = err.response?.data;
+            if (errorData) {
+                const detalle = typeof errorData === 'object'
+                    ? Object.entries(errorData).map(([campo, msgs]) => `${campo}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`).join(' | ')
+                    : JSON.stringify(errorData);
+                setMensaje({ tipo: 'error', texto: `Error del servidor: ${detalle}` });
+            } else {
+                setMensaje({ tipo: 'error', texto: 'No se pudo conectar con el servidor Django. Verifica que runserver siga activo.' });
+            }
         } finally {
-            setGuardando(false);
+            setEnviando(false);
         }
     };
 
-    const getInputStyle = (error) => ({
-        width: '100%',
-        height: '38px',
-        padding: '0 11px',
-        backgroundColor: '#ffffff',
-        color: '#0f172a',
-        border: `1px solid ${error ? '#ef4444' : '#cbd5e1'}`,
-        borderRadius: '4px',
-        fontSize: '13px',
-        fontWeight: '500',
-        outline: 'none',
-        boxSizing: 'border-box',
-        transition: 'border-color 0.15s ease'
-    });
-
-    const labelStyle = {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        height: '18px',
-        fontSize: '11px',
-        fontWeight: '700',
-        color: '#334155',
-        letterSpacing: '0.03em',
-        textTransform: 'uppercase',
-        marginBottom: '6px'
-    };
-
     return (
-        <div style={{
-            minHeight: '100vh',
-            backgroundColor: '#e2e8f0',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            padding: '32px 16px',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'flex-start',
-            boxSizing: 'border-box'
-        }}>
+        <div style={{ width: '100%', maxWidth: '960px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+            {/* Cabecera */}
             <div style={{
-                width: '100%',
-                maxWidth: '820px',
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
-                overflow: 'hidden'
+                backgroundColor: '#0f172a',
+                padding: '24px 28px',
+                borderRadius: '18px',
+                boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.25)',
+                border: '1px solid #1e293b',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '14px'
             }}>
-
-                {/* Cabecera Técnica */}
-                <div style={{
-                    padding: '14px 22px',
-                    backgroundColor: '#0f172a',
-                    color: '#ffffff',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    borderBottom: '3px solid #d97706'
-                }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                            <span style={{
-                                backgroundColor: '#d97706',
-                                color: '#ffffff',
-                                fontSize: '10px',
-                                fontWeight: '800',
-                                padding: '2px 6px',
-                                borderRadius: '3px',
-                                letterSpacing: '0.04em'
-                            }}>
-                                FAENA
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', letterSpacing: '0.04em' }}>
-                                MULTIMAK 360
-                            </span>
-                        </div>
-                        <h1 style={{ fontSize: '17px', fontWeight: '700', margin: 0, color: '#f8fafc' }}>
-                            Reporte Diario de Operación
-                        </h1>
-                    </div>
-
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #334155',
-                        padding: '5px 12px',
-                        borderRadius: '4px'
-                    }}>
-                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-                        <span style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: '600' }}>
-                            {operador?.nombre || 'Operador Terreno'}
-                        </span>
-                    </div>
+                <div>
+                    <span style={{ fontSize: '11px', fontWeight: '800', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        PANEL DE OPERADOR
+                    </span>
+                    <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#ffffff', margin: '4px 0 0', letterSpacing: '-0.02em' }}>
+                        Registro Diario de Turno
+                    </h1>
                 </div>
 
-                {/* Banner de Notificación Integrado */}
-                {mensaje.texto && (
-                    <div style={{
-                        margin: '14px 22px 0 22px',
-                        padding: '10px 14px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        backgroundColor: mensaje.tipo === 'exito' ? '#dcfce7' : '#fef2f2',
-                        color: mensaje.tipo === 'exito' ? '#15803d' : '#b91c1c',
-                        border: `1px solid ${mensaje.tipo === 'exito' ? '#86efac' : '#fca5a5'}`
-                    }}>
-                        <span>{mensaje.tipo === 'exito' ? '✓' : '⚠'}</span>
-                        <span>{mensaje.texto}</span>
+                <div style={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    color: '#e2e8f0',
+                    fontSize: '12px',
+                    fontWeight: '700'
+                }}>
+                    Operador: {operador?.nombre} {operador?.apellido || ''}
+                </div>
+            </div>
+
+            {mensaje.texto && (
+                <div style={{
+                    backgroundColor: mensaje.tipo === 'exito' ? '#dcfce7' : '#fee2e2',
+                    color: mensaje.tipo === 'exito' ? '#15803d' : '#991b1b',
+                    border: `1px solid ${mensaje.tipo === 'exito' ? '#bbf7d0' : '#fca5a5'}`,
+                    padding: '12px 18px',
+                    borderRadius: '12px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    textAlign: 'center'
+                }}>
+                    {mensaje.texto}
+                </div>
+            )}
+
+            {/* Formulario */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '28px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
+                <form onSubmit={enviarParteDiario} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Maquinaria */}
+                    <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                            Máquina asignada
+                        </label>
+                        <select
+                            value={idMaquinaSeleccionada}
+                            onChange={manejarCambioMaquina}
+                            style={{
+                                width: '100%',
+                                height: '46px',
+                                padding: '0 14px',
+                                borderRadius: '12px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '14px',
+                                color: '#0f172a',
+                                outline: 'none',
+                                backgroundColor: '#f8fafc',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {maquinarias.map((m) => (
+                                <option key={m.id_maquina} value={m.id_maquina}>
+                                    [{m.patente}] {m.tipo} - {m.marca} {m.modelo} (Horómetro: {m.horometro_actual} hrs)
+                                </option>
+                            ))}
+                        </select>
                     </div>
-                )}
 
-                {/* Formulario */}
-                <form
-                    onSubmit={guardarReport}
-                    noValidate
-                    style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '16px' }}
-                >
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', alignItems: 'stretch' }}>
+                    {/* Horas del Turno */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                Hora de Entrada *
+                            </label>
+                            <input
+                                type="time"
+                                required
+                                value={horaEntrada}
+                                onChange={(e) => setHoraEntrada(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    height: '46px',
+                                    padding: '0 14px',
+                                    borderRadius: '12px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '15px',
+                                    fontFamily: 'Consolas, monospace',
+                                    fontWeight: '700',
+                                    color: '#0f172a',
+                                    backgroundColor: '#f8fafc',
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
 
-                        {/* Bloque Izquierdo */}
-                        <div style={{
-                            backgroundColor: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '4px',
-                            padding: '16px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            gap: '12px'
-                        }}>
-                            <div>
-                                <label style={labelStyle}>Maquinaria Asignada</label>
-                                <select
-                                    value={idMaquina}
-                                    onChange={(e) => {
-                                        const found = maquinarias.find((m) => m.id_maquina === parseInt(e.target.value));
-                                        if (found) seleccionarMaquina(found);
-                                    }}
-                                    style={{ ...getInputStyle(false), cursor: 'pointer' }}
-                                >
-                                    {maquinarias.map((m) => (
-                                        <option key={m.id_maquina} value={m.id_maquina}>
-                                            [{m.patente}] {m.tipo} — {m.marca} {m.modelo}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label style={labelStyle}>Fecha de Registro</label>
-                                <input
-                                    type="date"
-                                    value={fecha}
-                                    onChange={(e) => setFecha(e.target.value)}
-                                    style={getInputStyle(false)}
-                                />
-                            </div>
-
-                            <div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                <div>
-                                    <label style={labelStyle}>Hora Entrada</label>
-                                    <input
-                                        type="time"
-                                        value={horaEntrada}
-                                        onChange={(e) => {
-                                            setHoraEntrada(e.target.value);
-                                            setErrores((prev) => ({ ...prev, horario: null }));
-                                        }}
-                                        style={getInputStyle(errores.horario)}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>Hora Salida</label>
-                                    <input
-                                        type="time"
-                                        value={horaSalida}
-                                        onChange={(e) => {
-                                            setHoraSalida(e.target.value);
-                                            setErrores((prev) => ({ ...prev, horario: null }));
-                                        }}
-                                        style={getInputStyle(errores.horario)}
-                                    />
-                                </div>
-                            </div>
-                            {errores.horario && (
-                                <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '4px', display: 'block' }}>
-                                    {errores.horario}
-                                </span>
-                            )}
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                Hora de Salida *
+                            </label>
+                            <input
+                                type="time"
+                                required
+                                value={horaSalida}
+                                onChange={(e) => setHoraSalida(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    height: '46px',
+                                    padding: '0 14px',
+                                    borderRadius: '12px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '15px',
+                                    fontFamily: 'Consolas, monospace',
+                                    fontWeight: '700',
+                                    color: '#0f172a',
+                                    backgroundColor: '#f8fafc',
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
                         </div>
                     </div>
 
-                    {/* Bloque Derecho */}
+                    {/* Horómetros y Horas calculadas */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                Horómetro inicial
+                            </label>
+                            <input
+                                type="number"
+                                step="0.1"
+                                required
+                                readOnly
+                                value={horometroInicial}
+                                style={{
+                                    width: '100%',
+                                    height: '46px',
+                                    padding: '0 14px',
+                                    borderRadius: '12px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '15px',
+                                    fontFamily: 'Consolas, monospace',
+                                    fontWeight: '800',
+                                    color: '#64748b',
+                                    backgroundColor: '#f1f5f9',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                Horómetro final *
+                            </label>
+                            <input
+                                type="number"
+                                step="0.1"
+                                required
+                                placeholder="ej: 765.0"
+                                value={horometroFinal}
+                                onChange={(e) => setHorometroFinal(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    height: '46px',
+                                    padding: '0 14px',
+                                    borderRadius: '12px',
+                                    border: '2px solid #f59e0b',
+                                    fontSize: '15px',
+                                    fontFamily: 'Consolas, monospace',
+                                    fontWeight: '800',
+                                    color: '#0f172a',
+                                    backgroundColor: '#ffffff',
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#15803d', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                Horas trabajadas
+                            </label>
+                            <div style={{
+                                height: '46px',
+                                borderRadius: '12px',
+                                border: '1px solid #bbf7d0',
+                                backgroundColor: '#f0fdf4',
+                                color: '#166534',
+                                fontSize: '16px',
+                                fontFamily: 'Consolas, monospace',
+                                fontWeight: '900',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '0 14px'
+                            }}>
+                                {horasCalculadas} hrs
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Combustible opcional con bloqueo de negativos */}
                     <div style={{
                         backgroundColor: '#f8fafc',
                         border: '1px solid #e2e8f0',
-                        borderRadius: '4px',
-                        padding: '16px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        gap: '12px'
+                        borderRadius: '14px',
+                        padding: '16px 20px'
                     }}>
-                        <div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                <div>
-                                    <label style={labelStyle}>Horómetro Inicial</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        value={horometroInicial}
-                                        readOnly
-                                        tabIndex="-1"
-                                        style={{
-                                            ...getInputStyle(false),
-                                            backgroundColor: '#f1f5f9',
-                                            color: '#475569',
-                                            cursor: 'not-allowed',
-                                            fontFamily: 'Consolas, monospace',
-                                            fontWeight: '700'
-                                        }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>Horómetro Final</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        value={horometroFinal}
-                                        onChange={(e) => {
-                                            setHorometroFinal(e.target.value);
-                                            setErrores((prev) => ({ ...prev, horometroFinal: null }));
-                                        }}
-                                        placeholder="0.0"
-                                        style={{
-                                            ...getInputStyle(errores.horometroFinal),
-                                            fontFamily: 'Consolas, monospace',
-                                            fontWeight: '600'
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                            {errores.horometroFinal && (
-                                <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '4px', display: 'block' }}>
-                                    {errores.horometroFinal}
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Carga de Combustible */}
-                        <div style={{
-                            borderTop: '1px solid #e2e8f0',
-                            paddingTop: '8px'
-                        }}>
-                            <label style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                cursor: 'pointer',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: '#334155',
-                                letterSpacing: '0.03em',
-                                textTransform: 'uppercase'
-                            }}>
-                                <input
-                                    type="checkbox"
-                                    checked={cargoCombustible}
-                                    onChange={(e) => {
-                                        setCargoCombustible(e.target.checked);
-                                        if (!e.target.checked) setCombustible('0');
-                                        setErrores((prev) => ({ ...prev, combustible: null }));
-                                    }}
-                                    style={{
-                                        width: '15px',
-                                        height: '15px',
-                                        accentColor: '#0f172a',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                                Registrar Combustible
-                            </label>
-
-                            {cargoCombustible && (
-                                <div style={{ marginTop: '8px' }}>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        value={combustible}
-                                        onChange={(e) => {
-                                            setCombustible(e.target.value);
-                                            setErrores((prev) => ({ ...prev, combustible: null }));
-                                        }}
-                                        placeholder="Litros cargados"
-                                        style={{
-                                            ...getInputStyle(errores.combustible),
-                                            fontFamily: 'Consolas, monospace'
-                                        }}
-                                    />
-                                    {errores.combustible && (
-                                        <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '4px', display: 'block' }}>
-                                            {errores.combustible}
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Resumen de Horas */}
-                        <div style={{
-                            height: '48px',
-                            backgroundColor: '#0f172a',
-                            border: '1px solid #1e293b',
-                            borderRadius: '4px',
-                            padding: '0 14px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            boxSizing: 'border-box'
-                        }}>
-                            <div>
-                                <span style={{
-                                    display: 'block',
-                                    fontSize: '10px',
-                                    fontWeight: '800',
-                                    color: '#ffffff',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.05em'
-                                }}>
-                                    HORAS CALCULADAS
-                                </span>
-                                <span style={{
-                                    fontSize: '11px',
-                                    color: '#94a3b8',
-                                    fontWeight: '500'
-                                }}>
-                                    Total del turno
-                                </span>
-                            </div>
-                            <span style={{
-                                fontSize: '20px',
-                                fontWeight: '700',
-                                color: horasCalculadas > 24 ? '#f87171' : '#fbbf24',
-                                fontFamily: 'Consolas, monospace'
-                            }}>
-                                {horasCalculadas} <span style={{ fontSize: '12px', fontWeight: '600', color: '#ffffff' }}>HRS</span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                            <input
+                                type="checkbox"
+                                checked={cargoCombustible}
+                                onChange={(e) => {
+                                    setCargoCombustible(e.target.checked);
+                                    if (!e.target.checked) setCombustibleLitros('');
+                                }}
+                                style={{ width: '18px', height: '18px', accentColor: '#f59e0b', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
+                                ¿Cargaste combustible en este turno?
                             </span>
-                        </div>
-                    </div>
-
-                </div>
-
-                {/* Visto Bueno y Conformidad */}
-                <div style={{
-                    marginTop: '4px',
-                    paddingTop: '14px',
-                    borderTop: '1px solid #e2e8f0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px'
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <label style={{ ...labelStyle, marginBottom: 0 }}>
-                            V°B° SUPERVISOR EN TERRENO
                         </label>
 
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                            <button
-                                type="button"
-                                onClick={() => cambiarModo('digital')}
-                                style={{
-                                    background: modoFirma === 'digital' ? '#0f172a' : '#f1f5f9',
-                                    color: modoFirma === 'digital' ? '#ffffff' : '#475569',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '3px',
-                                    padding: '4px 9px',
-                                    fontSize: '11px',
-                                    fontWeight: '700',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Firma en Pantalla
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => cambiarModo('fisico')}
-                                style={{
-                                    background: modoFirma === 'fisico' ? '#0f172a' : '#f1f5f9',
-                                    color: modoFirma === 'fisico' ? '#ffffff' : '#475569',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '3px',
-                                    padding: '4px 9px',
-                                    fontSize: '11px',
-                                    fontWeight: '700',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Foto de Hoja Física
-                            </button>
-                        </div>
+                        {cargoCombustible && (
+                            <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px dashed #cbd5e1' }}>
+                                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                    Litros cargados (mínimo 1 litro)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    required={cargoCombustible}
+                                    placeholder="ej: 80"
+                                    value={combustibleLitros}
+                                    onKeyDown={(e) => {
+                                        // Bloquea el signo menos, signo más y la letra 'e'
+                                        if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+                                            e.preventDefault();
+                                        }
+                                    }}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        // Solo permite guardar números mayores o iguales a 0
+                                        if (val === '' || parseFloat(val) >= 0) {
+                                            setCombustibleLitros(val);
+                                        }
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        maxWidth: '300px',
+                                        height: '44px',
+                                        padding: '0 14px',
+                                        borderRadius: '10px',
+                                        border: '1px solid #cbd5e1',
+                                        fontSize: '14px',
+                                        color: '#0f172a',
+                                        backgroundColor: '#ffffff',
+                                        outline: 'none',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
 
-                    {/* MODO DIGITAL */}
-                    {modoFirma === 'digital' ? (
-                        <div style={{
-                            backgroundColor: '#f8fafc',
-                            border: `1px solid ${errores.firma ? '#fca5a5' : '#e2e8f0'}`,
-                            borderRadius: '4px',
-                            padding: '14px 16px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px' }}>
-                                <span style={{ fontSize: '11px', color: '#475569', lineHeight: '1.4', fontWeight: '500' }}>
-                                    Certifico la conformidad de las horas de operación, horómetros y trabajos ejecutados en este turno conforme a la faena realizada.
+                    {/* Observaciones */}
+                    <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                            Observaciones del turno
+                        </label>
+                        <textarea
+                            rows="3"
+                            placeholder="Escribe aquí si hubo algún problema con la máquina o detalles del trabajo..."
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '12px 14px',
+                                borderRadius: '12px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '13px',
+                                color: '#0f172a',
+                                backgroundColor: '#f8fafc',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                                resize: 'none'
+                            }}
+                        />
+                    </div>
+
+                    {/* Bloque de Confirmación */}
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                                <span style={{ fontSize: '11px', fontWeight: '800', color: '#f59e0b', textTransform: 'uppercase' }}>
+                                    Confirmación en terreno
                                 </span>
-                                <button
-                                    type="button"
-                                    onClick={limpiarFirma}
-                                    style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#ef4444',
-                                        fontSize: '10px',
-                                        fontWeight: '700',
-                                        cursor: 'pointer',
-                                        letterSpacing: '0.03em',
-                                        textTransform: 'uppercase',
-                                        padding: 0,
-                                        flexShrink: 0
-                                    }}
-                                >
-                                    Borrar firma
-                                </button>
+                                <h3 style={{ margin: '2px 0 0', fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
+                                    Firma o respaldo del supervisor
+                                </h3>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            {/* Botones de selección */}
+                            <div style={{ display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px', gap: '4px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setMetodoValidacion('firma')}
+                                    style={{
+                                        padding: '8px 14px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        cursor: 'pointer',
+                                        backgroundColor: metodoValidacion === 'firma' ? '#0f172a' : 'transparent',
+                                        color: metodoValidacion === 'firma' ? '#ffffff' : '#64748b'
+                                    }}
+                                >
+                                    Firma en pantalla
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMetodoValidacion('foto')}
+                                    style={{
+                                        padding: '8px 14px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        cursor: 'pointer',
+                                        backgroundColor: metodoValidacion === 'foto' ? '#0f172a' : 'transparent',
+                                        color: metodoValidacion === 'foto' ? '#ffffff' : '#64748b'
+                                    }}
+                                >
+                                    Subir foto del papel
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Opción 1: Firma */}
+                        {metodoValidacion === 'firma' && (
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase' }}>
+                                        Firma aquí
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={limpiarFirma}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: '#dc2626',
+                                            fontSize: '11px',
+                                            fontWeight: '800',
+                                            cursor: 'pointer',
+                                            textDecoration: 'underline'
+                                        }}
+                                    >
+                                        Borrar firma
+                                    </button>
+                                </div>
+
                                 <div style={{
-                                    width: '100%',
-                                    maxWidth: '440px',
-                                    border: firmadoCanvas ? '1px solid #16a34a' : (errores.firma ? '1px solid #ef4444' : '1px dashed #cbd5e1'),
-                                    borderRadius: '4px',
-                                    backgroundColor: '#ffffff',
+                                    border: tieneFirma ? '2px solid #16a34a' : '2px dashed #cbd5e1',
+                                    borderRadius: '12px',
+                                    backgroundColor: '#fafafa',
                                     overflow: 'hidden',
-                                    position: 'relative'
+                                    touchAction: 'none'
                                 }}>
                                     <canvas
                                         ref={canvasRef}
-                                        width={440}
-                                        height={90}
+                                        width={860}
+                                        height={150}
                                         onMouseDown={iniciarDibujo}
-                                        onMouseUp={terminarDibujo}
-                                        onMouseLeave={terminarDibujo}
                                         onMouseMove={dibujar}
+                                        onMouseUp={detenerDibujo}
+                                        onMouseLeave={detenerDibujo}
                                         onTouchStart={iniciarDibujo}
-                                        onTouchEnd={terminarDibujo}
-                                        onTouchCancel={terminarDibujo}
                                         onTouchMove={dibujar}
+                                        onTouchEnd={detenerDibujo}
+                                        style={{ width: '100%', height: '150px', display: 'block', cursor: 'crosshair' }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Opción 2: Foto */}
+                        {metodoValidacion === 'foto' && (
+                            <div>
+                                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                    Foto del parte firmado
+                                </label>
+                                <div style={{
+                                    border: '2px dashed #cbd5e1',
+                                    borderRadius: '12px',
+                                    backgroundColor: '#f8fafc',
+                                    height: '150px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '16px',
+                                    boxSizing: 'border-box',
+                                    textAlign: 'center',
+                                    position: 'relative'
+                                }}>
+                                    <input
+                                        type="file"
+                                        accept="image/*,application/pdf"
+                                        onChange={(e) => setArchivoComprobante(e.target.files[0])}
                                         style={{
-                                            width: '100%',
-                                            height: '90px',
-                                            display: 'block',
-                                            touchAction: 'none',
-                                            cursor: 'crosshair',
-                                            backgroundColor: '#ffffff'
+                                            position: 'absolute',
+                                            top: 0, left: 0, width: '100%', height: '100%',
+                                            opacity: 0,
+                                            cursor: 'pointer'
                                         }}
                                     />
-                                    <div style={{
-                                        position: 'absolute',
-                                        bottom: '5px',
-                                        left: '10px',
-                                        right: '10px',
-                                        borderTop: '1px dashed #e2e8f0',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        pointerEvents: 'none'
-                                    }}>
-                                        <span style={{ fontSize: '9px', color: '#94a3b8' }}>Línea de firma</span>
-                                    </div>
+                                    <span style={{ fontSize: '26px', marginBottom: '6px' }}>📷</span>
+                                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
+                                        {archivoComprobante ? archivoComprobante.name : 'Toca aquí para tomar foto o elegir archivo'}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                        {archivoComprobante ? 'Archivo listo para subir' : 'JPG, PNG o PDF'}
+                                    </span>
                                 </div>
-                                {errores.firma && (
-                                    <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '6px' }}>
-                                        {errores.firma}
-                                    </span>
-                                )}
                             </div>
-                        </div>
-                    ) : (
-                        /* MODO FÍSICO */
-                        <div style={{
-                            border: archivoFoto ? '1px solid #16a34a' : (errores.firma ? '1px solid #ef4444' : '1px dashed #cbd5e1'),
-                            borderRadius: '4px',
-                            backgroundColor: '#f8fafc',
-                            padding: '16px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            minHeight: '80px',
-                            boxSizing: 'border-box'
-                        }}>
-                            <div>
-                                <span style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b', display: 'block' }}>
-                                    {archivoFoto ? `Archivo listo: ${archivoFoto.name}` : 'Adjuntar foto del parte diario firmado'}
-                                </span>
-                                <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                    {archivoFoto ? 'Foto cargada correctamente como respaldo legal.' : 'Toma una foto con el teléfono o adjunta el comprobante firmado a mano.'}
-                                </span>
-                                {errores.firma && (
-                                    <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '4px', display: 'block' }}>
-                                        {errores.firma}
-                                    </span>
-                                )}
-                            </div>
-                            <label style={{
-                                backgroundColor: '#0f172a',
-                                color: '#ffffff',
-                                padding: '7px 16px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}>
-                                {archivoFoto ? 'Cambiar Foto' : 'Tomar / Subir Foto'}
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    onChange={(e) => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            setArchivoFoto(e.target.files[0]);
-                                            setErrores((prev) => ({ ...prev, firma: null }));
-                                        }
-                                    }}
-                                    style={{ display: 'none' }}
-                                />
-                            </label>
-                        </div>
-                    )}
-
-                    {/* Barra de Guardado */}
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginTop: '2px'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{
-                                width: '7px',
-                                height: '7px',
-                                borderRadius: '50%',
-                                backgroundColor: estaValidado ? '#16a34a' : '#f59e0b'
-                            }} />
-                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>
-                                {estaValidado
-                                    ? (modoFirma === 'digital' ? 'Firma registrada' : 'Foto adjuntada correctamente')
-                                    : (modoFirma === 'digital' ? 'Falta la firma del supervisor' : 'Falta adjuntar la foto del papel')
-                                }
-                            </span>
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={guardando}
-                            style={{
-                                padding: '9px 24px',
-                                backgroundColor: guardando ? '#64748b' : '#0f172a',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                letterSpacing: '0.03em',
-                                textTransform: 'uppercase',
-                                cursor: guardando ? 'not-allowed' : 'pointer'
-                            }}
-                        >
-                            {guardando ? 'Guardando...' : 'Guardar Reporte'}
-                        </button>
+                        )}
                     </div>
-                </div>
 
-            </form>
+                    {/* Botón de Enviar */}
+                    <button
+                        type="submit"
+                        disabled={enviando}
+                        style={{
+                            height: '50px',
+                            backgroundColor: '#f59e0b',
+                            color: '#0f172a',
+                            border: 'none',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '900',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            cursor: enviando ? 'not-allowed' : 'pointer',
+                            boxShadow: '0 4px 14px rgba(245, 158, 11, 0.4)',
+                            marginTop: '4px'
+                        }}
+                    >
+                        {enviando ? 'Guardando...' : 'Enviar parte diario'}
+                    </button>
+                </form>
+            </div>
+
+            {/* Historial */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
+                <h3 style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
+                    Tus turnos recientes
+                </h3>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                        <thead>
+                            <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                <th style={{ padding: '10px 14px', color: '#475569', fontWeight: '800' }}>FECHA</th>
+                                <th style={{ padding: '10px 14px', color: '#475569', fontWeight: '800' }}>MÁQUINA</th>
+                                <th style={{ padding: '10px 14px', color: '#475569', fontWeight: '800' }}>HORÓMETROS</th>
+                                <th style={{ padding: '10px 14px', color: '#475569', fontWeight: '800', textAlign: 'right' }}>HORAS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {reportesPrevios.slice(0, 5).map((r) => (
+                                <tr key={r.id_report} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '12px 14px', color: '#475569' }}>{r.fecha}</td>
+                                    <td style={{ padding: '12px 14px', fontWeight: '700', color: '#0f172a', fontFamily: 'Consolas, monospace' }}>
+                                        {obtenerPatente(r.id_maquina, r.id_maquina_detalle)}
+                                    </td>
+                                    <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px' }}>
+                                        {r.horometro_inicial} → {r.horometro_final}
+                                    </td>
+                                    <td style={{ padding: '12px 14px', fontWeight: '900', color: '#166534', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>
+                                        {parseFloat(r.horas_trabajadas || 0).toFixed(1)} hrs
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-    </div>
-);
+    );
 }

@@ -1,69 +1,140 @@
 import React, { useState } from 'react';
+import InicioSesion from './componentes/InicioSesion';
 import VistaOperador from './componentes/VistaOperador';
 import VistaAdmin from './componentes/VistaAdmin';
+import VistaContador from './componentes/VistaContador';
 
 export default function App() {
-  const [rolActual, setRolActual] = useState('operador');
+  const [usuario, setUsuario] = useState(() => {
+    try {
+      const sesionGuardada = localStorage.getItem('usuario_multimak');
+      return sesionGuardada ? JSON.parse(sesionGuardada) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
-  const operadorSesion = {
-    id_operador: 1,
-    nombre: 'Operador Terreno'
+  const iniciarSesion = (datos) => {
+    const infoUsuario = datos?.usuario ? datos.usuario : datos;
+    setUsuario(infoUsuario);
+    localStorage.setItem('usuario_multimak', JSON.stringify(infoUsuario));
   };
 
+  const cerrarSesion = () => {
+    setUsuario(null);
+    localStorage.removeItem('usuario_multimak');
+    localStorage.clear();
+  };
+
+  // Detección de roles
+  const rolCrudo = (
+    usuario?.rol || 
+    usuario?.id_rol?.rol || 
+    usuario?.id_rol || 
+    usuario?.tipo || 
+    ''
+  ).toString().toLowerCase();
+
+  const esAdmin = rolCrudo.includes('admin');
+  const esOperador = rolCrudo.includes('operador') || rolCrudo.includes('chofer');
+  const esContador = rolCrudo.includes('contador') || rolCrudo.includes('contab') || rolCrudo.includes('finan');
+
+  if (!usuario) {
+    return <InicioSesion onLogin={iniciarSesion} />;
+  }
+
   return (
-    <div>
-      {/* Barra de alternancia rápida */}
-      <div style={{
-        backgroundColor: '#0f172a',
-        padding: '8px 16px',
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+      {/* Barra superior de navegación */}
+      <header style={{
+        backgroundColor: '#ffffff',
+        borderBottom: '1px solid #e2e8f0',
+        padding: '0 32px',
+        height: '68px',
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        borderBottom: '1px solid #334155'
+        justifyContent: 'space-between',
+        position: 'sticky',
+        top: 0,
+        zIndex: 50
       }}>
-        <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
-          MULTIMAK 360
-        </span>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            backgroundColor: '#f59e0b',
+            color: '#0f172a',
+            fontWeight: '900',
+            fontSize: '18px',
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            M
+          </div>
+          <div>
+            <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', lineHeight: 1.1 }}>
+              MULTIMAK <span style={{ color: '#d97706' }}>360</span>
+            </div>
+            <div style={{ fontSize: '10px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>
+              {esAdmin && 'Panel de Supervisión General'}
+              {esOperador && 'Terminal de Faena'}
+              {esContador && 'Módulo de Finanzas y Contabilidad'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#f1f5f9',
+            padding: '6px 14px',
+            borderRadius: '20px'
+          }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+              {usuario.nombre} {usuario.apellido || ''}
+            </span>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: '800',
+              textTransform: 'uppercase',
+              backgroundColor: '#fef3c7',
+              color: '#92400e',
+              padding: '2px 8px',
+              borderRadius: '6px'
+            }}>
+              {usuario.rol || 'Contador'}
+            </span>
+          </div>
+
           <button
-            onClick={() => setRolActual('operador')}
+            onClick={cerrarSesion}
             style={{
-              padding: '4px 10px',
-              backgroundColor: rolActual === 'operador' ? '#f59e0b' : '#1e293b',
-              color: rolActual === 'operador' ? '#0f172a' : '#cbd5e1',
-              border: 'none',
-              borderRadius: '2px',
-              cursor: 'pointer',
+              backgroundColor: 'transparent',
+              border: '1px solid #cbd5e1',
+              color: '#64748b',
+              padding: '6px 14px',
+              borderRadius: '10px',
+              fontSize: '12px',
               fontWeight: '700',
-              fontSize: '11px'
+              cursor: 'pointer'
             }}
           >
-            Operador
-          </button>
-          <button
-            onClick={() => setRolActual('admin')}
-            style={{
-              padding: '4px 10px',
-              backgroundColor: rolActual === 'admin' ? '#f59e0b' : '#1e293b',
-              color: rolActual === 'admin' ? '#0f172a' : '#cbd5e1',
-              border: 'none',
-              borderRadius: '2px',
-              cursor: 'pointer',
-              fontWeight: '700',
-              fontSize: '11px'
-            }}
-          >
-            Administrador
+            Cerrar Sesión ✕
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Renderizado de vistas */}
-      {rolActual === 'operador' ? (
-        <VistaOperador operador={operadorSesion} />
-      ) : (
-        <VistaAdmin />
-      )}
+      {/* Vistas según el rol */}
+      <main style={{ flex: 1, width: '100%', padding: '32px', boxSizing: 'border-box' }}>
+        {esAdmin && <VistaAdmin />}
+        {esOperador && <VistaOperador operador={usuario} />}
+        {esContador && <VistaContador />}
+      </main>
     </div>
   );
 }
