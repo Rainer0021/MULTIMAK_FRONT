@@ -1,623 +1,777 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from '../api/axios';
+import '../styles/VistaAdmin.css';
 
-function validarRutChileno(rutCompleto) {
-    if (!rutCompleto || typeof rutCompleto !== 'string') return false;
-    const valorLimpio = rutCompleto.replace(/\./g, '').replace(/-/g, '').trim().toUpperCase();
-    if (valorLimpio.length < 8 || valorLimpio.length > 9) return false;
+export default function VistaAdmin({ usuario }) {
+    const fechaHoy = new Date().toISOString().split('T')[0];
 
-    const cuerpo = valorLimpio.slice(0, -1);
-    const dv = valorLimpio.slice(-1);
+    // Pestañas principales
+    const [tabActiva, setTabActiva] = useState('dashboard');
+    const [cargando, setCargando] = useState(true);
+    const [error, setError] = useState('');
+    const [mensajeExito, setMensajeExito] = useState('');
 
-    if (!/^\d+$/.test(cuerpo)) return false;
-
-    let suma = 0;
-    let multiplo = 2;
-
-    for (let i = cuerpo.length - 1; i >= 0; i--) {
-        suma += multiplo * parseInt(cuerpo.charAt(i), 10);
-        multiplo = multiplo < 7 ? multiplo + 1 : 2;
-    }
-
-    const dvEsperado = 11 - (suma % 11);
-    let dvCalculado = '';
-    if (dvEsperado === 11) dvCalculado = '0';
-    else if (dvEsperado === 10) dvCalculado = 'K';
-    else dvCalculado = dvEsperado.toString();
-
-    return dv === dvCalculado;
-}
-
-function formatearRut(rut) {
-    const limpio = rut.replace(/\./g, '').replace(/-/g, '').trim().toUpperCase();
-    if (limpio.length <= 1) return limpio;
-    const cuerpo = limpio.slice(0, -1);
-    const dv = limpio.slice(-1);
-    return `${cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}-${dv}`;
-}
-
-export default function VistaAdmin() {
-    const [pestañaActiva, setPestañaActiva] = useState('dashboard');
+    // Colecciones de datos
     const [maquinarias, setMaquinarias] = useState([]);
     const [operadores, setOperadores] = useState([]);
     const [reportes, setReportes] = useState([]);
     const [gastos, setGastos] = useState([]);
-    const [cargando, setCargando] = useState(true);
+    const [contratos, setContratos] = useState([]);
+    const [clientes, setClientes] = useState([]);
+    const [usuariosDisponibles, setUsuariosDisponibles] = useState([]);
 
-    const [filtroTexto, setFiltroTexto] = useState('');
-    const [filtroEstado, setFiltroEstado] = useState('todos');
+    // Estados de búsqueda y filtrado en tiempo real
+    const [busquedaMaq, setBusquedaMaq] = useState('');
+    const [busquedaOp, setBusquedaOp] = useState('');
+    const [busquedaGasto, setBusquedaGasto] = useState('');
 
-    const [menuDesplegableAbierto, setMenuDesplegableAbierto] = useState(false);
-    const dropdownRef = useRef(null);
-
-    const [modalActivo, setModalActivo] = useState(null);
-    const [guardando, setGuardando] = useState(false);
-    const [mensajeError, setMensajeError] = useState('');
-
+    // Estados CRUD Maquinarias
+    const [mostrarModalMaq, setMostrarModalMaq] = useState(false);
+    const [editandoMaqId, setEditandoMaqId] = useState(null);
     const [formMaq, setFormMaq] = useState({
         patente: '',
-        tipo: 'Retroexcavadora',
-        marca: 'Caterpillar',
-        modelo: '416E',
-        horometro_actual: '0',
-        estado: 'Operativa'
+        marca: '',
+        modelo: '',
+        tipo: 'Excavadora',
+        horometro_actual: '',
+        estado: 'Disponible'
     });
 
+    // Estados CRUD Operadores
+    const [mostrarModalOp, setMostrarModalOp] = useState(false);
+    const [editandoOpId, setEditandoOpId] = useState(null);
     const [formOp, setFormOp] = useState({
-        nombre: '',
-        apellido: '',
-        rut: '',
-        contraseña: 'changeme123',
+        id_usuario: '',
         TipoLicencia: 'Clase D',
         fecha_vencimiento_licencia: ''
     });
 
+    // Estados CRUD Gastos
+    const [mostrarModalGasto, setMostrarModalGasto] = useState(false);
+    const [editandoGastoId, setEditandoGastoId] = useState(null);
     const [formGasto, setFormGasto] = useState({
-        id_maquina: '',
-        tipo_gasto: 'Combustible',
+        categoria_gasto: 'Combustible',
         monto: '',
-        descripcion: '',
-        fecha: new Date().toISOString().split('T')[0]
+        fecha: fechaHoy,
+        id_maquina: '',
+        numero_comprobante: ''
     });
 
-    useEffect(() => {
-        const clickAfuera = (e) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-                setMenuDesplegableAbierto(false);
-            }
-        };
-        document.addEventListener('mousedown', clickAfuera);
-        return () => document.removeEventListener('mousedown', clickAfuera);
-    }, []);
+    // Estados CRUD Contratos
+    const [mostrarModalContrato, setMostrarModalContrato] = useState(false);
+    const [formContrato, setFormContrato] = useState({
+        id_cliente: '',
+        fecha_inicio: fechaHoy,
+        fecha_fin: '',
+        tarifa_hora: '28000',
+        estado_contrato: 'Activo'
+    });
 
-    const cargarDatos = async () => {
+    // Carga global de entidades
+    const cargarTodo = async () => {
         setCargando(true);
+        setError('');
         try {
-            const [resMaq, resRep, resGas, resOp] = await Promise.all([
-                axios.get('/api/maquinarias/'),
-                axios.get('/api/reports/'),
-                axios.get('/api/gastos/'),
-                axios.get('/api/operadores/')
+            const [resMaq, resOp, resRep, resGas, resCont, resCli, resUsers] = await Promise.all([
+                axios.get('/maquinarias/').catch(() => axios.get('/maquinaria/')),
+                axios.get('/operadores/').catch(() => axios.get('/operador/')),
+                axios.get('/reports/').catch(() => axios.get('/report/')),
+                axios.get('/gastos/').catch(() => ({ data: [] })),
+                axios.get('/contratos/').catch(() => ({ data: [] })),
+                axios.get('/clientes/').catch(() => ({ data: [] })),
+                axios.get('/usuarios/').catch(() => ({ data: [] }))
             ]);
-            setMaquinarias(resMaq.data || []);
-            setReportes(resRep.data || []);
-            setGastos(resGas.data || []);
-            setOperadores(resOp.data || []);
-            if (resMaq.data && resMaq.data.length > 0 && !formGasto.id_maquina) {
-                setFormGasto((prev) => ({ ...prev, id_maquina: resMaq.data[0].id_maquina }));
-            }
+
+            setMaquinarias(resMaq.data?.results || resMaq.data || []);
+            setOperadores(resOp.data?.results || resOp.data || []);
+            setReportes(resRep.data?.results || resRep.data || []);
+            setGastos(resGas.data?.results || resGas.data || []);
+            setContratos(resCont.data?.results || resCont.data || []);
+            setClientes(resCli.data?.results || resCli.data || []);
+            setUsuariosDisponibles(resUsers.data?.results || resUsers.data || []);
         } catch (err) {
-            console.error('Error al sincronizar datos de flota:', err);
+            console.error('Error al sincronizar datos administrativos:', err);
+            setError('Error al sincronizar la información con el servidor.');
         } finally {
             setCargando(false);
         }
     };
 
     useEffect(() => {
-        cargarDatos();
+        cargarTodo();
     }, []);
 
-    const resolverDetalleMaquina = (idMaquina, detalleBackend) => {
-        if (detalleBackend && detalleBackend.patente) {
-            return `${detalleBackend.patente} (${detalleBackend.tipo || 'Equipo'})`;
-        }
-        const encontrada = maquinarias.find((m) => m.id_maquina === idMaquina || m.id === idMaquina);
-        if (encontrada) {
-            return `${encontrada.patente} (${encontrada.tipo})`;
-        }
-        return `Máquina #${idMaquina || 'S/I'}`;
-    };
-
+    // KPIs Operativos
     const totalEquipos = maquinarias.length;
-    const equiposOperativos = maquinarias.filter((m) => {
-        const est = (m.estado || '').toLowerCase();
-        return est.includes('oper') || est.includes('faena') || est.includes('disp');
-    }).length;
-
-    const equiposRequierenMant = maquinarias.filter((m) => {
-        const h = parseFloat(m.horometro_actual) || 0;
-        return (h % 250) >= 230;
-    }).length;
-
-    const alertasPauta = maquinarias.filter((m) => {
-        const h = parseFloat(m.horometro_actual) || 0;
-        const ciclo = h % 250;
-        return ciclo >= 180 && ciclo < 230;
-    }).length;
+    const enTaller = maquinarias.filter(m => m.estado === 'En Taller' || m.estado === 'Requiere Mantención').length;
+    const disponibilidadFlota = totalEquipos > 0
+        ? (((totalEquipos - enTaller) / totalEquipos) * 100).toFixed(1)
+        : '100.0';
 
     const totalGastos = gastos.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
 
-    const hoy = new Date();
-    const operadoresConAlertaLicencia = operadores.filter((op) => {
-        if (!op.fecha_vencimiento_licencia) return false;
-        const fVenc = new Date(op.fecha_vencimiento_licencia);
-        const difDias = Math.ceil((fVenc - hoy) / (1000 * 60 * 60 * 24));
-        return difDias <= 30;
-    });
+    // Lógica técnica de mantenciones preventivas (450h/500h y 950h/1.000h)
+    const analisisMantenciones = maquinarias.map((m) => {
+        const h = parseFloat(m.horometro_actual ?? m.horometro ?? 0);
+        let nivelAlerta = 'OPERATIVA';
+        let detalleAlerta = 'Operación normal en terreno';
+        let proximaPauta = 500;
 
-    const maquinariasFiltradas = maquinarias.filter((m) => {
-        const coincide = (m.patente || '').toLowerCase().includes(filtroTexto.toLowerCase()) ||
-            (m.tipo || '').toLowerCase().includes(filtroTexto.toLowerCase()) ||
-            (m.marca || '').toLowerCase().includes(filtroTexto.toLowerCase()) ||
-            (m.modelo || '').toLowerCase().includes(filtroTexto.toLowerCase());
-        if (filtroEstado === 'todos') return coincide;
-        const est = (m.estado || '').toLowerCase();
-        if (filtroEstado === 'operativa') return coincide && (est.includes('oper') || est.includes('faena'));
-        if (filtroEstado === 'taller') return coincide && est.includes('mant');
-        return coincide;
-    });
-
-    const abrirModalEspecifico = (tipo) => {
-        setMenuDesplegableAbierto(false);
-        setMensajeError('');
-        if (tipo === 'gasto' && maquinarias.length > 0 && !formGasto.id_maquina) {
-            setFormGasto((prev) => ({ ...prev, id_maquina: maquinarias[0].id_maquina }));
+        if (h < 500) {
+            proximaPauta = 500;
+            if (h >= 450) {
+                nivelAlerta = 'ALERTA_PREVENTIVA';
+                detalleAlerta = 'Alerta preventiva: faltan menos de 50 hrs para pauta de 500 hrs';
+            }
+        } else if (h >= 500 && h < 1000) {
+            proximaPauta = 1000;
+            if (h >= 950) {
+                nivelAlerta = 'ALERTA_PREVENTIVA';
+                detalleAlerta = 'Alerta preventiva: cambio de fluidos hidráulicos a las 1.000 hrs';
+            } else if (h >= 900) {
+                nivelAlerta = 'ATENCION';
+                detalleAlerta = 'Atención: equipo superó las 900 hrs. Planificar insumos de 1.000 hrs';
+            }
+        } else if (h >= 1000) {
+            proximaPauta = 1000;
+            nivelAlerta = 'REQUIERE_TALLER';
+            detalleAlerta = 'Mantención obligatoria: cumplió 1.000 hrs. Enviar equipo a taller';
         }
-        setModalActivo(tipo);
+
+        const horasRestantes = Math.max(0, proximaPauta - h);
+        const porcentajeUso = Math.min(100, Math.round((h / proximaPauta) * 100));
+
+        return {
+            ...m,
+            horometroNum: h,
+            proximaPauta,
+            horasRestantes: horasRestantes.toFixed(1),
+            porcentajeUso,
+            nivelAlerta,
+            detalleAlerta
+        };
+    });
+
+    const maquinasConAlerta = analisisMantenciones.filter(m => m.nivelAlerta !== 'OPERATIVA');
+
+    // Rendimiento de Operadores
+    const hoyDate = new Date();
+    const horasPorOperador = operadores.map(op => {
+        const reps = reportes.filter(r => r.id_operador === op.id_operador);
+        const sumaHoras = reps.reduce((acc, r) => acc + (parseInt(r.horas_trabajadas, 10) || 0), 0);
+        return {
+            id: op.id_operador,
+            nombre: op.id_usuario?.nombre || `Operador #${op.id_operador}`,
+            rut: op.id_usuario?.rut || op.rut || 'N/A',
+            licencia: op.TipoLicencia || 'Clase D',
+            vencimiento: op.fecha_vencimiento_licencia || 'Indefinida',
+            horas: sumaHoras,
+            turnos: reps.length
+        };
+    }).sort((a, b) => b.horas - a.horas);
+
+    // Filtrado reactivo en tiempo real
+    const maquinariasFiltradas = maquinarias.filter(m => {
+        const term = busquedaMaq.toLowerCase();
+        const patente = (m.patente || '').toLowerCase();
+        const marca = (m.marca || '').toLowerCase();
+        const modelo = (m.modelo || '').toLowerCase();
+        const tipo = (m.tipo || '').toLowerCase();
+        return patente.includes(term) || marca.includes(term) || modelo.includes(term) || tipo.includes(term);
+    });
+
+    const operadoresFiltrados = operadores.filter(op => {
+        const term = busquedaOp.toLowerCase();
+        const nombre = (op.id_usuario?.nombre || `Operador #${op.id_operador}`).toLowerCase();
+        const rut = (op.id_usuario?.rut || op.rut || '').toLowerCase();
+        const licencia = (op.TipoLicencia || '').toLowerCase();
+        return nombre.includes(term) || rut.includes(term) || licencia.includes(term);
+    });
+
+    const gastosFiltrados = gastos.filter(g => {
+        const term = busquedaGasto.toLowerCase();
+        const cat = (g.categoria_gasto || '').toLowerCase();
+        const comp = (g.numero_comprobante || '').toLowerCase();
+        const maqId = (g.id_maquina || '').toString();
+        return cat.includes(term) || comp.includes(term) || maqId.includes(term);
+    });
+
+    // Operaciones CRUD
+    const abrirFormMaquinaria = (maq = null) => {
+        if (maq) {
+            setEditandoMaqId(maq.id_maquina);
+            setFormMaq({
+                patente: maq.patente,
+                marca: maq.marca,
+                modelo: maq.modelo,
+                tipo: maq.tipo,
+                horometro_actual: maq.horometro_actual ?? maq.horometro ?? '',
+                estado: maq.estado || 'Disponible'
+            });
+        } else {
+            setEditandoMaqId(null);
+            setFormMaq({ patente: '', marca: '', modelo: '', tipo: 'Excavadora', horometro_actual: '', estado: 'Disponible' });
+        }
+        setMostrarModalMaq(true);
     };
 
-    const eliminarElemento = async (endpoint, id, nombre) => {
-        if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente: ${nombre}?`)) {
+    const guardarMaquinaria = async (e) => {
+        e.preventDefault();
+        const payload = {
+            patente: formMaq.patente.toUpperCase(),
+            marca: formMaq.marca,
+            modelo: formMaq.modelo,
+            tipo: formMaq.tipo,
+            horometro_actual: parseFloat(formMaq.horometro_actual) || 0,
+            estado: formMaq.estado
+        };
+
+        try {
+            if (editandoMaqId) {
+                await axios.put(`/maquinarias/${editandoMaqId}/`, payload);
+                setMensajeExito('Ficha técnica de maquinaria actualizada correctamente.');
+            } else {
+                await axios.post('/maquinarias/', payload);
+                setMensajeExito('Maquinaria dada de alta exitosamente en la flota.');
+            }
+            setMostrarModalMaq(false);
+            cargarTodo();
+        } catch {
+            setError('Error al procesar el registro de maquinaria.');
+        }
+    };
+
+    const eliminarMaquinaria = async (id) => {
+        if (!window.confirm(`Confirme la baja de la maquinaria #${id}:`)) return;
+        try {
+            await axios.delete(`/maquinarias/${id}/`);
+            setMensajeExito('Maquinaria eliminada del inventario de flota.');
+            cargarTodo();
+        } catch {
+            setError('No fue posible eliminar la maquinaria.');
+        }
+    };
+
+    const abrirFormOperador = (op = null) => {
+        if (op) {
+            setEditandoOpId(op.id_operador);
+            setFormOp({
+                id_usuario: op.id_usuario?.id_usuario || op.id_usuario || '',
+                TipoLicencia: op.TipoLicencia || 'Clase D',
+                fecha_vencimiento_licencia: op.fecha_vencimiento_licencia || ''
+            });
+        } else {
+            setEditandoOpId(null);
+            setFormOp({ id_usuario: '', TipoLicencia: 'Clase D', fecha_vencimiento_licencia: '' });
+        }
+        setMostrarModalOp(true);
+    };
+
+    const guardarOperador = async (e) => {
+        e.preventDefault();
+        if (!formOp.id_usuario) {
+            setError('Seleccione una cuenta de usuario para habilitar.');
             return;
         }
+
+        const payload = {
+            id_usuario: parseInt(formOp.id_usuario, 10),
+            TipoLicencia: formOp.TipoLicencia,
+            fecha_vencimiento_licencia: formOp.fecha_vencimiento_licencia || null
+        };
+
         try {
-            await axios.delete(`/api/${endpoint}/${id}/`);
-            cargarDatos();
-        } catch (err) {
-            alert(`No se pudo eliminar el registro. Puede estar asociado a turnos o gastos activos.`);
+            if (editandoOpId) {
+                await axios.put(`/operadores/${editandoOpId}/`, payload);
+                setMensajeExito('Registro de operador actualizado correctamente.');
+            } else {
+                await axios.post('/operadores/', payload);
+                setMensajeExito('Operador habilitado exitosamente en la nómina.');
+            }
+            setMostrarModalOp(false);
+            cargarTodo();
+        } catch {
+            setError('Error al registrar al operador en la base de datos.');
         }
     };
 
-    const enviarRegistro = async (e) => {
+    const eliminarOperador = async (id) => {
+        if (!window.confirm(`Confirme la baja del operador #${id}:`)) return;
+        try {
+            await axios.delete(`/operadores/${id}/`);
+            setMensajeExito('Operador eliminado de la nómina.');
+            cargarTodo();
+        } catch {
+            setError('No fue posible desvincular al operador.');
+        }
+    };
+
+    const abrirFormGasto = (g = null) => {
+        if (g) {
+            setEditandoGastoId(g.id_gasto);
+            setFormGasto({
+                categoria_gasto: g.categoria_gasto,
+                monto: g.monto,
+                fecha: g.fecha,
+                id_maquina: g.id_maquina,
+                numero_comprobante: g.numero_comprobante || ''
+            });
+        } else {
+            setEditandoGastoId(null);
+            setFormGasto({
+                categoria_gasto: 'Combustible',
+                monto: '',
+                fecha: fechaHoy,
+                id_maquina: '',
+                numero_comprobante: ''
+            });
+        }
+        setMostrarModalGasto(true);
+    };
+
+    const guardarGasto = async (e) => {
         e.preventDefault();
-        setGuardando(true);
-        setMensajeError('');
+        const sesion = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
+        const payload = {
+            categoria_gasto: formGasto.categoria_gasto,
+            monto: parseInt(formGasto.monto, 10),
+            fecha: formGasto.fecha,
+            id_maquina: parseInt(formGasto.id_maquina, 10),
+            numero_comprobante: formGasto.numero_comprobante.trim() || 'S/N',
+            id_usuario: sesion.id_usuario || 1
+        };
 
         try {
-            if (modalActivo === 'maquinaria') {
-                const patenteLimpia = formMaq.patente.trim().toUpperCase();
-                if (patenteLimpia.length < 5) {
-                    setMensajeError('La patente debe tener un formato válido (mínimo 5 caracteres).');
-                    setGuardando(false);
-                    return;
-                }
-
-                await axios.post('/api/maquinarias/', {
-                    ...formMaq,
-                    patente: patenteLimpia,
-                    horometro_actual: parseFloat(formMaq.horometro_actual) || 0
-                });
-            } else if (modalActivo === 'operador') {
-                if (!validarRutChileno(formOp.rut)) {
-                    setMensajeError('El RUT ingresado no es válido. Verifica el número y el dígito verificador.');
-                    setGuardando(false);
-                    return;
-                }
-
-                if (!formOp.fecha_vencimiento_licencia) {
-                    setMensajeError('Debes indicar la fecha de vencimiento de la licencia municipal.');
-                    setGuardando(false);
-                    return;
-                }
-
-                await axios.post('/api/operadores/', {
-                    ...formOp,
-                    rut: formatearRut(formOp.rut),
-                    nombre_input: formOp.nombre.trim(),
-                    apellido_input: formOp.apellido.trim(),
-                    rut_input: formatearRut(formOp.rut)
-                });
-            } else if (modalActivo === 'gasto') {
-                const maquinaSeleccionada = formGasto.id_maquina || (maquinarias.length > 0 ? maquinarias[0].id_maquina : null);
-
-                if (!maquinaSeleccionada) {
-                    setMensajeError('Debes seleccionar una maquinaria.');
-                    setGuardando(false);
-                    return;
-                }
-
-                const montoNum = parseFloat(formGasto.monto);
-                if (isNaN(montoNum) || montoNum <= 0) {
-                    setMensajeError('El monto del gasto debe ser un número mayor a 0.');
-                    setGuardando(false);
-                    return;
-                }
-
-                const payloadGasto = {
-                    id_maquina: parseInt(maquinaSeleccionada, 10),
-                    categoria_gasto: formGasto.tipo_gasto,
-                    tipo_gasto: formGasto.tipo_gasto,
-                    monto: montoNum,
-                    descripcion: formGasto.descripcion || '',
-                    fecha: formGasto.fecha || new Date().toISOString().split('T')[0]
-                };
-
-                await axios.post('/api/gastos/', payloadGasto);
-            }
-
-            setModalActivo(null);
-            cargarDatos();
-        } catch (err) {
-            const respuestaServidor = err.response?.data;
-            if (respuestaServidor) {
-                const detalle = typeof respuestaServidor === 'object'
-                    ? Object.entries(respuestaServidor).map(([k, v]) => `${k}: ${v}`).join(' | ')
-                    : JSON.stringify(respuestaServidor);
-                setMensajeError(`Error del servidor: ${detalle}`);
+            if (editandoGastoId) {
+                await axios.put(`/gastos/${editandoGastoId}/`, payload);
+                setMensajeExito('Gasto operativo actualizado.');
             } else {
-                setMensajeError('Error al guardar. Revisa que no existan datos duplicados.');
+                await axios.post('/gastos/', payload);
+                setMensajeExito('Gasto imputado a la maquinaria exitosamente.');
             }
-        } finally {
-            setGuardando(false);
+            setMostrarModalGasto(false);
+            cargarTodo();
+        } catch {
+            setError('Error al procesar el gasto operativo.');
+        }
+    };
+
+    const eliminarGasto = async (id) => {
+        if (!window.confirm(`Confirme la anulación del gasto #${id}:`)) return;
+        try {
+            await axios.delete(`/gastos/${id}/`);
+            setMensajeExito('Gasto operativo eliminado.');
+            cargarTodo();
+        } catch {
+            setError('No fue posible eliminar el comprobante de gasto.');
+        }
+    };
+
+    const guardarContrato = async (e) => {
+        e.preventDefault();
+        if (!formContrato.id_cliente) {
+            setError('Seleccione la empresa mandante del contrato.');
+            return;
+        }
+
+        const payload = {
+            id_cliente: parseInt(formContrato.id_cliente, 10),
+            fecha_inicio: formContrato.fecha_inicio,
+            fecha_fin: formContrato.fecha_fin || null,
+            tarifa_hora: parseInt(formContrato.tarifa_hora, 10),
+            estado_contrato: formContrato.estado_contrato
+        };
+
+        try {
+            await axios.post('/contratos/', payload);
+            setMensajeExito('Contrato comercial registrado exitosamente.');
+            setMostrarModalContrato(false);
+            cargarTodo();
+        } catch {
+            setError('Error al registrar el contrato comercial.');
         }
     };
 
     return (
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '22px' }}>
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '16px',
-                backgroundColor: '#0f172a',
-                padding: '22px 28px',
-                borderRadius: '18px',
-                boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.25)',
-                border: '1px solid #1e293b'
-            }}>
-                <div>
-                    <span style={{ fontSize: '11px', fontWeight: '800', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        ADMINISTRACIÓN GENERAL • MULTIMAK 360
-                    </span>
-                    <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#ffffff', margin: '4px 0 0', letterSpacing: '-0.02em' }}>
-                        Panel de Supervisión y Control Operacional
-                    </h1>
+        <div className="adm-view-container">
+            {/* Encabezado con contexto operativo y selector de período */}
+            <div className="adm-top-header">
+                <div className="adm-title-block">
+                    <span className="adm-kpi-sub">Sistema Integrado de Control</span>
+                    <h1 className="adm-page-title">Administración y Operación Central</h1>
+                    <p className="adm-page-desc">
+                        Disponibilidad de flota, mantenciones técnicas y conciliación de partes de faena.
+                    </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <button
-                        onClick={cargarDatos}
-                        style={{
-                            backgroundColor: '#1e293b',
-                            border: '1px solid #334155',
-                            color: '#e2e8f0',
-                            padding: '10px 18px',
-                            borderRadius: '10px',
-                            fontWeight: '700',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Sincronizar ⟳
-                    </button>
-
-                    <div ref={dropdownRef} style={{ position: 'relative' }}>
-                        <button
-                            onClick={() => setMenuDesplegableAbierto(!menuDesplegableAbierto)}
-                            style={{
-                                backgroundColor: '#f59e0b',
-                                border: 'none',
-                                color: '#0f172a',
-                                padding: '10px 18px',
-                                borderRadius: '10px',
-                                fontWeight: '800',
-                                fontSize: '12px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                boxShadow: '0 4px 14px rgba(245, 158, 11, 0.4)'
-                            }}
-                        >
-                            <span>+ Nuevo Registro</span>
-                            <span style={{ fontSize: '10px', transform: menuDesplegableAbierto ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
-                        </button>
-
-                        {menuDesplegableAbierto && (
-                            <div style={{
-                                position: 'absolute',
-                                top: 'calc(100% + 8px)',
-                                right: 0,
-                                backgroundColor: '#ffffff',
-                                borderRadius: '12px',
-                                boxShadow: '0 12px 30px rgba(15, 23, 42, 0.25)',
-                                border: '1px solid #e2e8f0',
-                                width: '210px',
-                                zIndex: 60,
-                                overflow: 'hidden',
-                                display: 'flex',
-                                flexDirection: 'column'
-                            }}>
-                                <button
-                                    onClick={() => abrirModalEspecifico('maquinaria')}
-                                    style={{
-                                        padding: '12px 16px',
-                                        textAlign: 'left',
-                                        background: 'none',
-                                        border: 'none',
-                                        fontSize: '13px',
-                                        fontWeight: '700',
-                                        color: '#0f172a',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                        borderBottom: '1px solid #f1f5f9'
-                                    }}
-                                >
-                                    <span style={{ fontSize: '16px' }}>🚜</span> Nueva Maquinaria
-                                </button>
-
-                                <button
-                                    onClick={() => abrirModalEspecifico('operador')}
-                                    style={{
-                                        padding: '12px 16px',
-                                        textAlign: 'left',
-                                        background: 'none',
-                                        border: 'none',
-                                        fontSize: '13px',
-                                        fontWeight: '700',
-                                        color: '#0f172a',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                        borderBottom: '1px solid #f1f5f9'
-                                    }}
-                                >
-                                    <span style={{ fontSize: '16px' }}>👷</span> Nuevo Operador
-                                </button>
-
-                                <button
-                                    onClick={() => abrirModalEspecifico('gasto')}
-                                    style={{
-                                        padding: '12px 16px',
-                                        textAlign: 'left',
-                                        background: 'none',
-                                        border: 'none',
-                                        fontSize: '13px',
-                                        fontWeight: '700',
-                                        color: '#0f172a',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px'
-                                    }}
-                                >
-                                    <span style={{ fontSize: '16px' }}>⛽</span> Registrar Gasto
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div style={{
-                backgroundColor: '#1e293b',
-                borderRadius: '14px',
-                padding: '6px',
-                display: 'flex',
-                gap: '6px',
-                overflowX: 'auto',
-                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)'
-            }}>
-                {[
-                    { id: 'dashboard', label: 'DASHBOARD / SEMÁFORO' },
-                    { id: 'equipos', label: `EQUIPOS (${totalEquipos})` },
-                    { id: 'operadores', label: `OPERADORES (${operadores.length})` },
-                    { id: 'turnos', label: `TURNOS RECIBIDOS (${reportes.length})` },
-                    { id: 'gastos', label: `GASTOS ($${totalGastos.toLocaleString('es-CL')})` }
-                ].map((tab) => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setPestañaActiva(tab.id)}
-                        style={{
-                            backgroundColor: pestañaActiva === tab.id ? '#0f172a' : 'transparent',
-                            color: pestañaActiva === tab.id ? '#f59e0b' : '#94a3b8',
-                            border: pestañaActiva === tab.id ? '1px solid #334155' : '1px solid transparent',
-                            borderRadius: '10px',
-                            padding: '10px 18px',
-                            fontSize: '11px',
-                            fontWeight: '800',
-                            letterSpacing: '0.04em',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                <div style={{ backgroundColor: '#ffffff', padding: '18px 22px', borderRadius: '16px', border: '1px solid #e2e8f0', borderTop: '4px solid #0f172a', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Flota Total</span>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#0f172a', fontFamily: 'Consolas, monospace', marginTop: '2px' }}>
-                        {totalEquipos}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Inventario registrado</span>
-                </div>
-
-                <div style={{ backgroundColor: '#ffffff', padding: '18px 22px', borderRadius: '16px', border: '1px solid #e2e8f0', borderTop: '4px solid #16a34a', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#16a34a', textTransform: 'uppercase' }}>Operativas</span>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#15803d', fontFamily: 'Consolas, monospace', marginTop: '2px' }}>
-                        {equiposOperativos}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#86efac' }}>En faena o listas</span>
-                </div>
-
-                <div style={{ backgroundColor: '#ffffff', padding: '18px 22px', borderRadius: '16px', border: '1px solid #e2e8f0', borderTop: '4px solid #dc2626', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#dc2626', textTransform: 'uppercase' }}>Requiere Mant.</span>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#b91c1c', fontFamily: 'Consolas, monospace', marginTop: '2px' }}>
-                        {equiposRequierenMant}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#fca5a5' }}>Pendientes de taller</span>
-                </div>
-
-                <div style={{ backgroundColor: '#ffffff', padding: '18px 22px', borderRadius: '16px', border: '1px solid #e2e8f0', borderTop: '4px solid #2563eb', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#2563eb', textTransform: 'uppercase' }}>Alertas Pauta</span>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#1d4ed8', fontFamily: 'Consolas, monospace', marginTop: '2px' }}>
-                        {alertasPauta}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#93c5fd' }}>Ventana 450h / 950h</span>
-                </div>
-            </div>
-
-            {operadoresConAlertaLicencia.length > 0 && (
-                <div style={{
-                    backgroundColor: '#fffbeb',
-                    border: '1px solid #fef3c7',
-                    borderLeft: '4px solid #f59e0b',
-                    borderRadius: '12px',
-                    padding: '14px 20px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                }}>
-                    <div style={{ fontSize: '12px', color: '#92400e', fontWeight: '600' }}>
-                        ⚠️ Hay {operadoresConAlertaLicencia.length} operador(es) con licencia por vencer o vencida.
-                    </div>
-                    <button
-                        onClick={() => setPestañaActiva('operadores')}
-                        style={{ backgroundColor: '#f59e0b', color: '#0f172a', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }}
-                    >
-                        Revisar
-                    </button>
-                </div>
-            )}
-
-            {pestañaActiva === 'dashboard' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        <input
-                            type="text"
-                            placeholder="Filtrar por patente (ej: BK-PT-45), equipo o modelo..."
-                            value={filtroTexto}
-                            onChange={(e) => setFiltroTexto(e.target.value)}
-                            style={{
-                                flex: 1,
-                                minWidth: '260px',
-                                height: '42px',
-                                backgroundColor: '#ffffff',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '10px',
-                                padding: '0 16px',
-                                fontSize: '13px',
-                                color: '#0f172a',
-                                outline: 'none'
-                            }}
-                        />
-                        <select
-                            value={filtroEstado}
-                            onChange={(e) => setFiltroEstado(e.target.value)}
-                            style={{
-                                height: '42px',
-                                backgroundColor: '#ffffff',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '10px',
-                                padding: '0 16px',
-                                fontSize: '13px',
-                                color: '#0f172a',
-                                outline: 'none',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <option value="todos">Todos los estados</option>
-                            <option value="operativa">Operativas</option>
-                            <option value="taller">En Mantenimiento</option>
+                <div className="adm-period-controls">
+                    <div className="adm-period-selector">
+                        <span className="adm-period-label">Período Operativo:</span>
+                        <select className="adm-select-period" defaultValue="mes_actual">
+                            <option value="mes_actual">Mes Actual (Octubre 2026)</option>
+                            <option value="mes_anterior">Mes Anterior (Septiembre 2026)</option>
+                            <option value="historico">Histórico Acumulado</option>
                         </select>
                     </div>
 
-                    <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                    <button className="adm-btn-refresh" onClick={cargarTodo} title="Sincronizar datos con el servidor">
+                        <span style={{ fontSize: '13px' }}>↻</span> Actualizar
+                    </button>
+                </div>
+            </div>
+
+            {mensajeExito && <div className="adm-alert-ok">{mensajeExito}</div>}
+            {error && <div className="adm-alert-fail">{error}</div>}
+
+            {/* Navegación por pestañas sobria y continua */}
+            <nav className="adm-nav-group">
+                <button
+                    type="button"
+                    className={`adm-nav-btn ${tabActiva === 'dashboard' ? 'active' : ''}`}
+                    onClick={() => setTabActiva('dashboard')}
+                >
+                    Dashboard & KPIs
+                </button>
+                <button
+                    type="button"
+                    className={`adm-nav-btn ${tabActiva === 'maquinarias' ? 'active' : ''}`}
+                    onClick={() => setTabActiva('maquinarias')}
+                >
+                    Maquinarias <span className="adm-nav-badge">{totalEquipos}</span>
+                </button>
+                <button
+                    type="button"
+                    className={`adm-nav-btn ${tabActiva === 'operadores' ? 'active' : ''}`}
+                    onClick={() => setTabActiva('operadores')}
+                >
+                    Operadores <span className="adm-nav-badge">{operadores.length}</span>
+                </button>
+                <button
+                    type="button"
+                    className={`adm-nav-btn ${tabActiva === 'contratos' ? 'active' : ''}`}
+                    onClick={() => setTabActiva('contratos')}
+                >
+                    Contratos <span className="adm-nav-badge">{contratos.length}</span>
+                </button>
+                <button
+                    type="button"
+                    className={`adm-nav-btn ${tabActiva === 'gastos' ? 'active' : ''}`}
+                    onClick={() => setTabActiva('gastos')}
+                >
+                    Gastos <span className="adm-nav-badge">{gastos.length}</span>
+                </button>
+                <button
+                    type="button"
+                    className={`adm-nav-btn ${tabActiva === 'turnos' ? 'active' : ''}`}
+                    onClick={() => setTabActiva('turnos')}
+                >
+                    Partes Diarios <span className="adm-nav-badge">{reportes.length}</span>
+                </button>
+            </nav>
+
+            {/* ==============================================================
+          TAB 1: DASHBOARD Y KPIS
+          ============================================================== */}
+            {tabActiva === 'dashboard' && (
+                <div className="adm-tab-content">
+                    <div className="adm-kpi-grid">
+                        <div className="adm-kpi-card highlight">
+                            <span className="adm-kpi-sub">Disponibilidad de Flota</span>
+                            <div className="adm-kpi-value">{disponibilidadFlota}%</div>
+                            <span className="adm-kpi-foot">{totalEquipos - enTaller} de {totalEquipos} máquinas operativas</span>
+                        </div>
+
+                        <div className="adm-kpi-card">
+                            <span className="adm-kpi-sub">Contratos en Ejecución</span>
+                            <div className="adm-kpi-value">{contratos.length}</div>
+                            <span className="adm-kpi-foot">Obras y faenas comerciales vigentes</span>
+                        </div>
+
+                        <div className="adm-kpi-card">
+                            <span className="adm-kpi-sub">Total Gastos Operativos</span>
+                            <div className="adm-kpi-value" style={{ color: '#b91c1c' }}>
+                                ${totalGastos.toLocaleString('es-CL')}
+                            </div>
+                            <span className="adm-kpi-foot">Combustible, repuestos y compras de faena</span>
+                        </div>
+
+                        <div className={`adm-kpi-card ${maquinasConAlerta.length > 0 ? 'alert-card' : ''}`}>
+                            <span className="adm-kpi-sub">Alertas de Mantención</span>
+                            <div className="adm-kpi-value">{maquinasConAlerta.length}</div>
+                            <span className="adm-kpi-foot">Próximos a servicio técnico</span>
+                        </div>
+                    </div>
+
+                    <div className="adm-dash-grid">
+                        {/* Panel Izquierdo: Rendimiento Humano de Operadores */}
+                        <div className="adm-card">
+                            <div className="adm-card-head">
+                                <div>
+                                    <h3 className="adm-card-title">Rendimiento Operativo por Conductor</h3>
+                                    <p className="adm-card-sub">Horas computadas en faena según partes diarios firmados.</p>
+                                </div>
+                                <span className="adm-nav-badge">{horasPorOperador.length} conductores</span>
+                            </div>
+
+                            <div className="adm-table-wrap">
+                                <table className="adm-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Operador</th>
+                                            <th>RUT</th>
+                                            <th>Licencia</th>
+                                            <th>Turnos</th>
+                                            <th style={{ textAlign: 'right' }}>Horas Totales</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {horasPorOperador.map(op => (
+                                            <tr key={op.id}>
+                                                <td><strong>{op.nombre}</strong></td>
+                                                <td><span className="adm-code-tag">{op.rut}</span></td>
+                                                <td><span className="adm-tag-amber">{op.licencia}</span></td>
+                                                <td>{op.turnos} partes</td>
+                                                <td style={{ textAlign: 'right', fontWeight: '800', color: op.horas > 0 ? '#b45309' : '#64748b' }}>
+                                                    {op.horas} hrs
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Panel Derecho: Control Preventivo de Equipos */}
+                        <div className="adm-card">
+                            <div className="adm-card-head">
+                                <div>
+                                    <h3 className="adm-card-title">Control Preventivo de Equipos (500h / 1.000h)</h3>
+                                    <p className="adm-card-sub">Alertas automáticas para coordinar taller antes de fallas en obra.</p>
+                                </div>
+                                <span className="adm-nav-badge">{totalEquipos} máquinas</span>
+                            </div>
+
+                            <div className="adm-fleet-list">
+                                {analisisMantenciones.map((m) => (
+                                    <div
+                                        key={m.id_maquina}
+                                        className={`adm-fleet-item ${m.nivelAlerta === 'REQUIERE_TALLER'
+                                                ? 'fleet-alert-critical'
+                                                : m.nivelAlerta === 'ALERTA_PREVENTIVA' || m.nivelAlerta === 'ATENCION'
+                                                    ? 'fleet-alert-warning'
+                                                    : ''
+                                            }`}
+                                    >
+                                        <div className="adm-fleet-info" style={{ flex: 1 }}>
+                                            <span className="adm-fleet-badge">{m.patente}</span>
+                                            <div style={{ flex: 1, paddingRight: '12px' }}>
+                                                <strong>{m.marca} {m.modelo}</strong>
+                                                <span className="adm-fleet-type">{m.tipo} | {m.detalleAlerta}</span>
+
+                                                <div className="adm-progress-bg">
+                                                    <div
+                                                        className={`adm-progress-bar ${m.porcentajeUso >= 95 ? 'bar-red' : m.porcentajeUso >= 80 ? 'bar-amber' : 'bar-green'
+                                                            }`}
+                                                        style={{ width: `${m.porcentajeUso}%` }}
+                                                    />
+                                                </div>
+                                                <span className="adm-progress-text">
+                                                    Pauta objetivo: <strong>{m.proximaPauta} hrs</strong> (Faltan {m.horasRestantes} hrs)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="adm-fleet-horo">
+                                            <span>Horómetro actual</span>
+                                            <strong>{m.horometroNum.toFixed(1)} hrs</strong>
+                                            {m.nivelAlerta === 'REQUIERE_TALLER' && <span className="adm-badge-red">INGRESO A TALLER</span>}
+                                            {m.nivelAlerta === 'ALERTA_PREVENTIVA' && <span className="adm-badge-red">ALERTA 50h PREVIA</span>}
+                                            {m.nivelAlerta === 'ATENCION' && <span className="adm-badge-amber">ATENCIÓN (900h+)</span>}
+                                            {m.nivelAlerta === 'OPERATIVA' && <span className="adm-badge-green">OPERATIVA</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==============================================================
+          TAB 2: CRUD DE MAQUINARIAS
+          ============================================================== */}
+            {tabActiva === 'maquinarias' && (
+                <div className="adm-tab-content">
+                    <div className="adm-action-bar">
+                        <h2>Inventario de Maquinarias</h2>
+                        <div className="adm-action-tools">
+                            <div className="adm-search-wrap">
+                                <input
+                                    type="text"
+                                    className="adm-search-input"
+                                    placeholder="Buscar por patente, marca o modelo..."
+                                    value={busquedaMaq}
+                                    onChange={(e) => setBusquedaMaq(e.target.value)}
+                                />
+                                {busquedaMaq && (
+                                    <button className="adm-search-clear" onClick={() => setBusquedaMaq('')}>×</button>
+                                )}
+                            </div>
+
+                            <button className="adm-btn-primary" onClick={() => abrirFormMaquinaria()}>
+                                {mostrarModalMaq ? 'Cerrar Formulario' : 'Registrar Maquinaria'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {mostrarModalMaq && (
+                        <div className="adm-card adm-form-box">
+                            <h3 className="adm-card-title">{editandoMaqId ? `Modificar Equipo #${editandoMaqId}` : 'Alta de Nuevo Equipo'}</h3>
+                            <form onSubmit={guardarMaquinaria} className="adm-crud-form">
+                                <div className="adm-grid-3">
+                                    <div className="adm-field">
+                                        <label>Patente / Identificador</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: AB-CD-12"
+                                            value={formMaq.patente}
+                                            onChange={e => setFormMaq({ ...formMaq, patente: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>Marca</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: Caterpillar"
+                                            value={formMaq.marca}
+                                            onChange={e => setFormMaq({ ...formMaq, marca: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>Modelo</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: 320D"
+                                            value={formMaq.modelo}
+                                            onChange={e => setFormMaq({ ...formMaq, modelo: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="adm-grid-3" style={{ marginTop: '14px' }}>
+                                    <div className="adm-field">
+                                        <label>Tipo de Maquinaria</label>
+                                        <select
+                                            value={formMaq.tipo}
+                                            onChange={e => setFormMaq({ ...formMaq, tipo: e.target.value })}
+                                        >
+                                            <option value="Excavadora">Excavadora</option>
+                                            <option value="Minicargador">Minicargador</option>
+                                            <option value="Retroexcavadora">Retroexcavadora</option>
+                                            <option value="Cargador Frontal">Cargador Frontal</option>
+                                            <option value="Motoniveladora">Motoniveladora</option>
+                                            <option value="Camión Tolva">Camión Tolva</option>
+                                        </select>
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>Horómetro Actual (hrs)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="Ej: 1450.0"
+                                            value={formMaq.horometro_actual}
+                                            onChange={e => setFormMaq({ ...formMaq, horometro_actual: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>Estado Operativo</label>
+                                        <select
+                                            value={formMaq.estado}
+                                            onChange={e => setFormMaq({ ...formMaq, estado: e.target.value })}
+                                        >
+                                            <option value="Disponible">Disponible</option>
+                                            <option value="En Faena">En Faena</option>
+                                            <option value="En Taller">En Taller</option>
+                                            <option value="Requiere Mantención">Requiere Mantención</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="adm-form-actions">
+                                    <button type="submit" className="adm-btn-submit">
+                                        {editandoMaqId ? 'Guardar Modificaciones' : 'Registrar Equipo en BD'}
+                                    </button>
+                                    <button type="button" className="adm-btn-secondary" onClick={() => setMostrarModalMaq(false)}>
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="adm-card">
+                        <div className="adm-table-wrap">
+                            <table className="adm-table">
                                 <thead>
-                                    <tr style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
-                                        <th style={{ padding: '14px 20px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>Patente</th>
-                                        <th style={{ padding: '14px 20px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>Maquinaria</th>
-                                        <th style={{ padding: '14px 20px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>Horómetro</th>
-                                        <th style={{ padding: '14px 20px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>Semáforo Preventivo</th>
-                                        <th style={{ padding: '14px 20px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>Estado</th>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Patente</th>
+                                        <th>Marca y Modelo</th>
+                                        <th>Tipo</th>
+                                        <th>Horómetro Registrado</th>
+                                        <th>Estado</th>
+                                        <th style={{ textAlign: 'center', width: '90px' }}>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {maquinariasFiltradas.map((m) => {
-                                        const horom = parseFloat(m.horometro_actual) || 0;
-                                        const ciclo = horom % 250;
-                                        const faltan = Math.max(0, (250 - ciclo).toFixed(0));
-                                        const porcentaje = Math.min(100, Math.round((ciclo / 250) * 100));
-                                        const critico = ciclo >= 230;
-                                        const alerta = ciclo >= 180 && ciclo < 230;
-
-                                        return (
-                                            <tr key={m.id_maquina} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={{ padding: '14px 20px', fontWeight: '800', color: '#0f172a', fontFamily: 'Consolas, monospace' }}>
-                                                    {m.patente}
-                                                </td>
-                                                <td style={{ padding: '14px 20px' }}>
-                                                    <span style={{ fontWeight: '700', color: '#0f172a' }}>{m.tipo}</span>
-                                                    <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>{m.marca} {m.modelo}</span>
-                                                </td>
-                                                <td style={{ padding: '14px 20px', fontFamily: 'Consolas, monospace', fontWeight: '800', color: '#0f172a' }}>
-                                                    {horom.toFixed(1)} hrs
-                                                </td>
-                                                <td style={{ padding: '14px 20px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <span style={{
-                                                            fontSize: '11px',
-                                                            fontWeight: '700',
-                                                            color: critico ? '#dc2626' : alerta ? '#d97706' : '#16a34a',
-                                                            minWidth: '140px'
-                                                        }}>
-                                                            {critico ? `¡Taller! (en ${faltan} hrs)` : `Próx. 1000h (en ${faltan} hrs)`}
-                                                        </span>
-                                                        <div style={{ width: '120px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                                                            <div style={{
-                                                                width: `${porcentaje}%`,
-                                                                height: '100%',
-                                                                backgroundColor: critico ? '#ef4444' : alerta ? '#f59e0b' : '#22c55e'
-                                                            }} />
-                                                        </div>
-                                                        <span style={{ fontSize: '10px', color: '#94a3b8', fontFamily: 'Consolas, monospace' }}>{porcentaje}%</span>
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '14px 20px' }}>
-                                                    <span style={{
-                                                        display: 'inline-block',
-                                                        padding: '4px 10px',
-                                                        borderRadius: '6px',
-                                                        fontSize: '10px',
-                                                        fontWeight: '800',
-                                                        backgroundColor: '#dcfce7',
-                                                        color: '#15803d'
-                                                    }}>
-                                                        {m.estado || 'OPERATIVA'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                    {maquinariasFiltradas.map(m => (
+                                        <tr key={m.id_maquina}>
+                                            <td>#{m.id_maquina}</td>
+                                            <td><strong>{m.patente}</strong></td>
+                                            <td>{m.marca} {m.modelo}</td>
+                                            <td><span className="adm-tag">{m.tipo}</span></td>
+                                            <td style={{ fontWeight: '800' }}>{(m.horometro_actual ?? m.horometro ?? 0)} hrs</td>
+                                            <td>
+                                                <span className={m.estado === 'En Faena' ? 'adm-tag-amber' : 'adm-tag'}>
+                                                    {m.estado || 'Disponible'}
+                                                </span>
+                                            </td>
+                                            <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                <button
+                                                    className="adm-action-btn edit"
+                                                    onClick={() => abrirFormMaquinaria(m)}
+                                                    title="Editar maquinaria"
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M12 20h9" />
+                                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                                    </svg>
+                                                </button>
+                                                <button
+                                                    className="adm-action-btn delete"
+                                                    onClick={() => eliminarMaquinaria(m.id_maquina)}
+                                                    title="Eliminar de la flota"
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="3 6 5 6 21 6" />
+                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                        <line x1="10" y1="11" x2="10" y2="17" />
+                                                        <line x1="14" y1="11" x2="14" y2="17" />
+                                                    </svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {maquinariasFiltradas.length === 0 && (
+                                        <tr>
+                                            <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                                                {busquedaMaq ? `No se encontraron maquinarias para "${busquedaMaq}".` : 'No hay maquinarias registradas.'}
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -625,526 +779,509 @@ export default function VistaAdmin() {
                 </div>
             )}
 
-            {pestañaActiva === 'equipos' && (
-                <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>Catálogo de Maquinarias</h3>
-                        <button
-                            onClick={() => abrirModalEspecifico('maquinaria')}
-                            style={{ backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                        >
-                            + Agregar Equipo
-                        </button>
-                    </div>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                            <thead>
-                                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>PATENTE</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>TIPO</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>MARCA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>MODELO</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>HORÓMETRO BASE</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>ESTADO</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800', textAlign: 'center' }}>ACCIONES</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {maquinarias.map((m) => (
-                                    <tr key={m.id_maquina} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                        <td style={{ padding: '14px 16px', fontWeight: '800', fontFamily: 'Consolas, monospace', color: '#0f172a' }}>{m.patente}</td>
-                                        <td style={{ padding: '14px 16px', fontWeight: '700', color: '#1e293b' }}>{m.tipo}</td>
-                                        <td style={{ padding: '14px 16px', color: '#475569' }}>{m.marca}</td>
-                                        <td style={{ padding: '14px 16px', color: '#475569' }}>{m.modelo}</td>
-                                        <td style={{ padding: '14px 16px', fontFamily: 'Consolas, monospace', fontWeight: '700', color: '#0f172a' }}>{parseFloat(m.horometro_actual || 0).toFixed(1)} hrs</td>
-                                        <td style={{ padding: '14px 16px' }}>
-                                            <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', backgroundColor: '#f1f5f9', color: '#334155' }}>
-                                                {m.estado || 'Disponible'}
-                                            </span>
-                                        </td>
-                                        <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                            <button
-                                                onClick={() => eliminarElemento('maquinarias', m.id_maquina, `Maquinaria [${m.patente}] ${m.tipo}`)}
-                                                title="Eliminar maquinaria"
-                                                style={{
-                                                    backgroundColor: '#fee2e2',
-                                                    color: '#dc2626',
-                                                    border: 'none',
-                                                    padding: '6px 12px',
-                                                    borderRadius: '8px',
-                                                    fontSize: '12px',
-                                                    fontWeight: '800',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                Eliminar ✕
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {pestañaActiva === 'operadores' && (
-                <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>Nómina de Operadores y Licencias</h3>
-                        <button
-                            onClick={() => abrirModalEspecifico('operador')}
-                            style={{ backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                        >
-                            + Registrar Operador
-                        </button>
-                    </div>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                            <thead>
-                                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>RUT</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>NOMBRE</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>CLASE LICENCIA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>VENCIMIENTO</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>ESTADO LICENCIA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800', textAlign: 'center' }}>ACCIONES</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {operadores.map((op) => {
-                                    const venc = op.fecha_vencimiento_licencia ? new Date(op.fecha_vencimiento_licencia) : null;
-                                    const vencida = venc && venc < hoy;
-                                    const rutMostrado = op.rut || op.id_usuario_detalle?.rut || '—';
-                                    const nombreCompleto = op.nombre ? `${op.nombre} ${op.apellido || ''}` : (op.id_usuario_detalle ? `${op.id_usuario_detalle.nombre} ${op.id_usuario_detalle.apellido}` : 'Operador');
-
-                                    return (
-                                        <tr key={op.id_operador} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '14px 16px', fontFamily: 'Consolas, monospace', fontWeight: '700', color: '#0f172a' }}>
-                                                {rutMostrado}
-                                            </td>
-                                            <td style={{ padding: '14px 16px', fontWeight: '700', color: '#0f172a' }}>
-                                                {nombreCompleto}
-                                            </td>
-                                            <td style={{ padding: '14px 16px', color: '#475569' }}>{op.TipoLicencia || 'Clase D'}</td>
-                                            <td style={{ padding: '14px 16px', color: '#475569' }}>{op.fecha_vencimiento_licencia || 'Sin registrar'}</td>
-                                            <td style={{ padding: '14px 16px' }}>
-                                                <span style={{
-                                                    padding: '4px 10px',
-                                                    borderRadius: '6px',
-                                                    fontSize: '11px',
-                                                    fontWeight: '800',
-                                                    backgroundColor: vencida ? '#fee2e2' : '#dcfce7',
-                                                    color: vencida ? '#991b1b' : '#166534'
-                                                }}>
-                                                    {vencida ? 'VENCIDA' : 'AL DÍA'}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                                <button
-                                                    onClick={() => eliminarElemento('operadores', op.id_operador, `Operador ${nombreCompleto}`)}
-                                                    title="Eliminar operador"
-                                                    style={{
-                                                        backgroundColor: '#fee2e2',
-                                                        color: '#dc2626',
-                                                        border: 'none',
-                                                        padding: '6px 12px',
-                                                        borderRadius: '8px',
-                                                        fontSize: '12px',
-                                                        fontWeight: '800',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    Eliminar ✕
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {pestañaActiva === 'turnos' && (
-                <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>Partes Diarios Enviados desde Faena</h3>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                            <thead>
-                                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>FECHA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>MÁQUINA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>HORAS TURNO</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>HORÓMETROS</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>COMBUSTIBLE</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>ESTADO FIRMA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800', textAlign: 'center' }}>ACCIONES</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {reportes.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
-                                            No se han recibido turnos todavía.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    reportes.map((r) => (
-                                        <tr key={r.id_report} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '14px 16px', fontWeight: '700', color: '#0f172a' }}>{r.fecha}</td>
-                                            <td style={{ padding: '14px 16px', color: '#334155' }}>
-                                                {resolverDetalleMaquina(r.id_maquina, r.id_maquina_detalle)}
-                                            </td>
-                                            <td style={{ padding: '14px 16px', fontWeight: '800', color: '#0f172a', fontFamily: 'Consolas, monospace' }}>
-                                                {r.horas_trabajadas} hrs
-                                            </td>
-                                            <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '12px' }}>
-                                                {r.horometro_inicial} → {r.horometro_final}
-                                            </td>
-                                            <td style={{ padding: '14px 16px', color: '#334155' }}>{r.combustible_litros || 0} Lts</td>
-                                            <td style={{ padding: '14px 16px' }}>
-                                                <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', backgroundColor: '#dcfce7', color: '#166534' }}>
-                                                    VISADO EN FAENA
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                                <button
-                                                    onClick={() => eliminarElemento('reports', r.id_report, `Parte Diario ID #${r.id_report}`)}
-                                                    title="Eliminar reporte de turno"
-                                                    style={{
-                                                        backgroundColor: '#fee2e2',
-                                                        color: '#dc2626',
-                                                        border: 'none',
-                                                        padding: '6px 12px',
-                                                        borderRadius: '8px',
-                                                        fontSize: '12px',
-                                                        fontWeight: '800',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    Eliminar ✕
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
+            {/* ==============================================================
+          TAB 3: CRUD DE OPERADORES
+          ============================================================== */}
+            {tabActiva === 'operadores' && (
+                <div className="adm-tab-content">
+                    <div className="adm-action-bar">
+                        <h2>Nómina de Operadores Acreditados</h2>
+                        <div className="adm-action-tools">
+                            <div className="adm-search-wrap">
+                                <input
+                                    type="text"
+                                    className="adm-search-input"
+                                    placeholder="Buscar por nombre, RUT o licencia..."
+                                    value={busquedaOp}
+                                    onChange={(e) => setBusquedaOp(e.target.value)}
+                                />
+                                {busquedaOp && (
+                                    <button className="adm-search-clear" onClick={() => setBusquedaOp('')}>×</button>
                                 )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+                            </div>
 
-            {pestañaActiva === 'gastos' && (
-                <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>Registro de Gastos Operativos y Combustible</h3>
-                        <button
-                            onClick={() => abrirModalEspecifico('gasto')}
-                            style={{ backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                        >
-                            + Registrar Gasto
-                        </button>
-                    </div>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                            <thead>
-                                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>FECHA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>CATEGORÍA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>MÁQUINA ASOCIADA</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>MONTO</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800' }}>DETALLE</th>
-                                    <th style={{ padding: '12px 16px', color: '#475569', fontWeight: '800', textAlign: 'center' }}>ACCIONES</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {gastos.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
-                                            No hay gastos registrados.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    gastos.map((g) => {
-                                        const cat = g.categoria_gasto || g.tipo_gasto || 'General';
-                                        const nombreMaquina = resolverDetalleMaquina(g.id_maquina, g.id_maquina_detalle);
-                                        return (
-                                            <tr key={g.id_gasto} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={{ padding: '14px 16px', color: '#475569' }}>{g.fecha}</td>
-                                                <td style={{ padding: '14px 16px', fontWeight: '700', color: '#0f172a' }}>{cat}</td>
-                                                <td style={{ padding: '14px 16px', fontWeight: '700', color: '#0f172a', fontFamily: 'Consolas, monospace' }}>
-                                                    {nombreMaquina}
-                                                </td>
-                                                <td style={{ padding: '14px 16px', fontWeight: '900', color: '#0f172a', fontFamily: 'Consolas, monospace' }}>
-                                                    ${parseFloat(g.monto || 0).toLocaleString('es-CL')}
-                                                </td>
-                                                <td style={{ padding: '14px 16px', color: '#64748b' }}>{g.descripcion || '—'}</td>
-                                                <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                                    <button
-                                                        onClick={() => eliminarElemento('gastos', g.id_gasto, `Gasto $${parseFloat(g.monto || 0).toLocaleString('es-CL')} de ${cat}`)}
-                                                        title="Eliminar gasto"
-                                                        style={{
-                                                            backgroundColor: '#fee2e2',
-                                                            color: '#dc2626',
-                                                            border: 'none',
-                                                            padding: '6px 12px',
-                                                            borderRadius: '8px',
-                                                            fontSize: '12px',
-                                                            fontWeight: '800',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        Eliminar ✕
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {modalActivo && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                    backdropFilter: 'blur(3px)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 100,
-                    padding: '16px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#ffffff',
-                        borderRadius: '20px',
-                        width: '100%',
-                        maxWidth: '480px',
-                        padding: '28px',
-                        boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)',
-                        boxSizing: 'border-box'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                                {modalActivo === 'maquinaria' && '🚜 Alta de Nueva Maquinaria'}
-                                {modalActivo === 'operador' && '👷 Registrar Nuevo Operador'}
-                                {modalActivo === 'gasto' && '⛽ Registro de Gasto Operativo'}
-                            </h3>
-                            <button
-                                onClick={() => setModalActivo(null)}
-                                style={{ background: 'none', border: 'none', fontSize: '18px', color: '#94a3b8', cursor: 'pointer', fontWeight: '700' }}
-                            >
-                                ✕
+                            <button className="adm-btn-primary" onClick={() => abrirFormOperador()}>
+                                {mostrarModalOp ? 'Cerrar Formulario' : 'Registrar Operador'}
                             </button>
                         </div>
+                    </div>
 
-                        {mensajeError && (
-                            <div style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', marginBottom: '14px', fontWeight: '700' }}>
-                                {mensajeError}
-                            </div>
-                        )}
-
-                        <form onSubmit={enviarRegistro} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            {modalActivo === 'maquinaria' && (
-                                <>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Patente</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            placeholder="HN-ZW-53"
-                                            value={formMaq.patente}
-                                            onChange={(e) => setFormMaq({ ...formMaq, patente: e.target.value.toUpperCase() })}
-                                            style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                        />
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Tipo</label>
-                                            <input
-                                                type="text"
-                                                required
-                                                placeholder="Excavadora"
-                                                value={formMaq.tipo}
-                                                onChange={(e) => setFormMaq({ ...formMaq, tipo: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Modelo</label>
-                                            <input
-                                                type="text"
-                                                required
-                                                placeholder="CAT 320D"
-                                                value={formMaq.modelo}
-                                                onChange={(e) => setFormMaq({ ...formMaq, modelo: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Horómetro Base</label>
-                                        <input
-                                            type="number"
-                                            step="0.1"
-                                            required
-                                            placeholder="0.0"
-                                            value={formMaq.horometro_actual}
-                                            onChange={(e) => setFormMaq({ ...formMaq, horometro_actual: e.target.value })}
-                                            style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                        />
-                                    </div>
-                                </>
-                            )}
-
-                            {modalActivo === 'operador' && (
-                                <>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Nombre</label>
-                                            <input
-                                                type="text"
-                                                required
-                                                placeholder="Juan"
-                                                value={formOp.nombre}
-                                                onChange={(e) => setFormOp({ ...formOp, nombre: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Apellido</label>
-                                            <input
-                                                type="text"
-                                                required
-                                                placeholder="Pérez"
-                                                value={formOp.apellido}
-                                                onChange={(e) => setFormOp({ ...formOp, apellido: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                            RUT del Chofer (Chileno Válido)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            required
-                                            placeholder="18.111.222-3"
-                                            value={formOp.rut}
-                                            onChange={(e) => setFormOp({ ...formOp, rut: e.target.value })}
-                                            style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                        />
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Licencia</label>
-                                            <select
-                                                value={formOp.TipoLicencia}
-                                                onChange={(e) => setFormOp({ ...formOp, TipoLicencia: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}
-                                            >
-                                                <option value="Clase D">Clase D (Maquinaria)</option>
-                                                <option value="Clase A4">Clase A4 (Cargas)</option>
-                                                <option value="Clase B">Clase B (Vehículos)</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Vencimiento</label>
-                                            <input
-                                                type="date"
-                                                required
-                                                value={formOp.fecha_vencimiento_licencia}
-                                                onChange={(e) => setFormOp({ ...formOp, fecha_vencimiento_licencia: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-
-                            {modalActivo === 'gasto' && (
-                                <>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Maquinaria</label>
+                    {mostrarModalOp && (
+                        <div className="adm-card adm-form-box">
+                            <h3 className="adm-card-title">{editandoOpId ? `Modificar Operador #${editandoOpId}` : 'Ficha de Operador'}</h3>
+                            <form onSubmit={guardarOperador} className="adm-crud-form">
+                                <div className="adm-grid-3">
+                                    <div className="adm-field">
+                                        <label>Usuario del Sistema</label>
                                         <select
-                                            value={formGasto.id_maquina}
-                                            onChange={(e) => setFormGasto({ ...formGasto, id_maquina: e.target.value })}
-                                            style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#fff' }}
+                                            value={formOp.id_usuario}
+                                            onChange={e => setFormOp({ ...formOp, id_usuario: e.target.value })}
+                                            disabled={Boolean(editandoOpId)}
+                                            required
                                         >
-                                            {maquinarias.map((m) => (
-                                                <option key={m.id_maquina} value={m.id_maquina}>
-                                                    [{m.patente}] {m.tipo} - {m.modelo}
+                                            <option value="">Seleccione cuenta...</option>
+                                            {usuariosDisponibles.map(u => (
+                                                <option key={u.id_usuario} value={u.id_usuario}>
+                                                    {u.nombre} ({u.rut})
                                                 </option>
                                             ))}
                                         </select>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Categoría de Gasto</label>
-                                            <select
-                                                value={formGasto.tipo_gasto}
-                                                onChange={(e) => setFormGasto({ ...formGasto, tipo_gasto: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#fff' }}
-                                            >
-                                                <option value="Combustible">Combustible</option>
-                                                <option value="Repuesto">Repuesto</option>
-                                                <option value="Mantención">Mantención</option>
-                                                <option value="Traslado">Traslado</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Monto ($)</label>
-                                            <input
-                                                type="number"
-                                                required
-                                                placeholder="50000"
-                                                value={formGasto.monto}
-                                                onChange={(e) => setFormGasto({ ...formGasto, monto: e.target.value })}
-                                                style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
+                                    <div className="adm-field">
+                                        <label>Tipo de Licencia</label>
+                                        <select
+                                            value={formOp.TipoLicencia}
+                                            onChange={e => setFormOp({ ...formOp, TipoLicencia: e.target.value })}
+                                        >
+                                            <option value="Clase D">Clase D (Maquinaria Pesada)</option>
+                                            <option value="Clase A4">Clase A4 (Carga Simple)</option>
+                                            <option value="Clase A5">Clase A5 (Articulados)</option>
+                                            <option value="Clase B">Clase B (Vehículos Menores)</option>
+                                        </select>
                                     </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>Descripción</label>
+                                    <div className="adm-field">
+                                        <label>Fecha de Vencimiento</label>
                                         <input
-                                            type="text"
-                                            placeholder="Carga de 80 Lts de petróleo en Copec..."
-                                            value={formGasto.descripcion}
-                                            onChange={(e) => setFormGasto({ ...formGasto, descripcion: e.target.value })}
-                                            style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                                            type="date"
+                                            value={formOp.fecha_vencimiento_licencia}
+                                            onChange={e => setFormOp({ ...formOp, fecha_vencimiento_licencia: e.target.value })}
                                         />
                                     </div>
-                                </>
-                            )}
+                                </div>
 
-                            <button
-                                type="submit"
-                                disabled={guardando}
-                                style={{
-                                    marginTop: '10px',
-                                    height: '46px',
-                                    backgroundColor: '#f59e0b',
-                                    color: '#0f172a',
-                                    border: 'none',
-                                    borderRadius: '10px',
-                                    fontSize: '12px',
-                                    fontWeight: '800',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.04em',
-                                    cursor: guardando ? 'not-allowed' : 'pointer',
-                                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
-                                }}
-                            >
-                                {guardando ? 'Guardando Registro...' : 'Confirmar y Guardar'}
+                                <div className="adm-form-actions">
+                                    <button type="submit" className="adm-btn-submit">
+                                        {editandoOpId ? 'Actualizar Operador' : 'Habilitar Operador'}
+                                    </button>
+                                    <button type="button" className="adm-btn-secondary" onClick={() => setMostrarModalOp(false)}>
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="adm-card">
+                        <div className="adm-table-wrap">
+                            <table className="adm-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre Operador</th>
+                                        <th>RUT</th>
+                                        <th>Tipo Licencia</th>
+                                        <th>Vencimiento</th>
+                                        <th>Condición Operativa</th>
+                                        <th style={{ textAlign: 'center', width: '90px' }}>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {operadoresFiltrados.map(op => {
+                                        const fVenc = op.fecha_vencimiento_licencia ? new Date(op.fecha_vencimiento_licencia) : null;
+                                        const vencida = fVenc && fVenc < hoyDate;
+                                        return (
+                                            <tr key={op.id_operador}>
+                                                <td>#{op.id_operador}</td>
+                                                <td><strong>{op.id_usuario?.nombre || 'Operador'}</strong></td>
+                                                <td><span className="adm-code-tag">{op.id_usuario?.rut || op.rut || 'N/A'}</span></td>
+                                                <td><span className="adm-tag-amber">{op.TipoLicencia || 'Clase D'}</span></td>
+                                                <td>{op.fecha_vencimiento_licencia || 'Indefinida'}</td>
+                                                <td>
+                                                    {vencida ? (
+                                                        <span className="adm-badge-red">Licencia Vencida</span>
+                                                    ) : (
+                                                        <span className="adm-badge-green">Habilitado para Faena</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                    <button
+                                                        className="adm-action-btn edit"
+                                                        onClick={() => abrirFormOperador(op)}
+                                                        title="Editar operador"
+                                                    >
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M12 20h9" />
+                                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        className="adm-action-btn delete"
+                                                        onClick={() => eliminarOperador(op.id_operador)}
+                                                        title="Eliminar operador"
+                                                    >
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <polyline points="3 6 5 6 21 6" />
+                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                            <line x1="10" y1="11" x2="10" y2="17" />
+                                                            <line x1="14" y1="11" x2="14" y2="17" />
+                                                        </svg>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {operadoresFiltrados.length === 0 && (
+                                        <tr>
+                                            <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                                                {busquedaOp ? `No se encontraron operadores para "${busquedaOp}".` : 'No hay operadores registrados.'}
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==============================================================
+          TAB 4: CRUD DE CONTRATOS
+          ============================================================== */}
+            {tabActiva === 'contratos' && (
+                <div className="adm-tab-content">
+                    <div className="adm-action-bar">
+                        <h2>Contratos Comerciales de Arriendo</h2>
+                        <button className="adm-btn-primary" onClick={() => setMostrarModalContrato(!mostrarModalContrato)}>
+                            {mostrarModalContrato ? 'Cerrar Formulario' : 'Nuevo Contrato de Obra'}
+                        </button>
+                    </div>
+
+                    {mostrarModalContrato && (
+                        <div className="adm-card adm-form-box">
+                            <h3 className="adm-card-title">Apertura de Contrato de Arriendo</h3>
+                            <form onSubmit={guardarContrato} className="adm-crud-form">
+                                <div className="adm-grid-3">
+                                    <div className="adm-field">
+                                        <label>Empresa Mandante / Cliente</label>
+                                        <select
+                                            value={formContrato.id_cliente}
+                                            onChange={e => setFormContrato({ ...formContrato, id_cliente: e.target.value })}
+                                            required
+                                        >
+                                            <option value="">Seleccione cliente...</option>
+                                            {clientes.map(c => (
+                                                <option key={c.id_cliente} value={c.id_cliente}>
+                                                    {c.razon_social} ({c.rut})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="adm-field">
+                                        <label>Tarifa por Hora ($CLP / hr)</label>
+                                        <input
+                                            type="number"
+                                            value={formContrato.tarifa_hora}
+                                            onChange={e => setFormContrato({ ...formContrato, tarifa_hora: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="adm-field">
+                                        <label>Estado del Contrato</label>
+                                        <select
+                                            value={formContrato.estado_contrato}
+                                            onChange={e => setFormContrato({ ...formContrato, estado_contrato: e.target.value })}
+                                        >
+                                            <option value="Activo">Activo / En Ejecución</option>
+                                            <option value="Finalizado">Finalizado</option>
+                                            <option value="Suspendido">Suspendido</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="adm-grid-3" style={{ marginTop: '14px' }}>
+                                    <div className="adm-field">
+                                        <label>Fecha de Inicio de Faena</label>
+                                        <input
+                                            type="date"
+                                            value={formContrato.fecha_inicio}
+                                            onChange={e => setFormContrato({ ...formContrato, fecha_inicio: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="adm-field">
+                                        <label>Fecha Estimada de Término</label>
+                                        <input
+                                            type="date"
+                                            value={formContrato.fecha_fin}
+                                            onChange={e => setFormContrato({ ...formContrato, fecha_fin: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="adm-form-actions">
+                                    <button type="submit" className="adm-btn-submit">Registrar Contrato</button>
+                                    <button type="button" className="adm-btn-secondary" onClick={() => setMostrarModalContrato(false)}>
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="adm-card">
+                        <div className="adm-table-wrap">
+                            <table className="adm-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID Contrato</th>
+                                        <th>Cliente Mandante</th>
+                                        <th>Tarifa por Hora</th>
+                                        <th>Fecha Inicio</th>
+                                        <th>Fecha Término</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {contratos.map(c => (
+                                        <tr key={c.id_contrato}>
+                                            <td>#{c.id_contrato}</td>
+                                            <td><strong>{c.id_cliente?.razon_social || `Cliente #${c.id_cliente}`}</strong></td>
+                                            <td style={{ fontWeight: '800', color: '#b45309' }}>
+                                                ${parseInt(c.tarifa_hora, 10).toLocaleString('es-CL')} / hr
+                                            </td>
+                                            <td>{c.fecha_inicio}</td>
+                                            <td>{c.fecha_fin || 'Vigente'}</td>
+                                            <td>
+                                                <span className={c.estado_contrato === 'Activo' ? 'adm-badge-green' : 'adm-tag'}>
+                                                    {c.estado_contrato || 'Activo'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {contratos.length === 0 && (
+                                        <tr>
+                                            <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                                                No se registran contratos comerciales activos en el sistema.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==============================================================
+          TAB 5: CRUD DE GASTOS
+          ============================================================== */}
+            {tabActiva === 'gastos' && (
+                <div className="adm-tab-content">
+                    <div className="adm-action-bar">
+                        <h2>Control y Rendición de Gastos en Faena</h2>
+                        <div className="adm-action-tools">
+                            <div className="adm-search-wrap">
+                                <input
+                                    type="text"
+                                    className="adm-search-input"
+                                    placeholder="Buscar por categoría, comprobante o máquina..."
+                                    value={busquedaGasto}
+                                    onChange={(e) => setBusquedaGasto(e.target.value)}
+                                />
+                                {busquedaGasto && (
+                                    <button className="adm-search-clear" onClick={() => setBusquedaGasto('')}>×</button>
+                                )}
+                            </div>
+
+                            <button className="adm-btn-primary" onClick={() => abrirFormGasto()}>
+                                {mostrarModalGasto ? 'Cerrar Formulario' : 'Imputar Nuevo Gasto'}
                             </button>
-                        </form>
+                        </div>
+                    </div>
+
+                    {mostrarModalGasto && (
+                        <div className="adm-card adm-form-box">
+                            <h3 className="adm-card-title">{editandoGastoId ? `Modificar Gasto #${editandoGastoId}` : 'Registro de Desembolso Operativo'}</h3>
+                            <form onSubmit={guardarGasto} className="adm-crud-form">
+                                <div className="adm-grid-3">
+                                    <div className="adm-field">
+                                        <label>Categoría del Gasto</label>
+                                        <select
+                                            value={formGasto.categoria_gasto}
+                                            onChange={e => setFormGasto({ ...formGasto, categoria_gasto: e.target.value })}
+                                        >
+                                            <option value="Combustible">Combustible / Diesel</option>
+                                            <option value="Repuesto">Repuestos y Componentes</option>
+                                            <option value="Viatico">Viáticos de Operación</option>
+                                            <option value="Lubricante">Lubricantes y Filtros</option>
+                                        </select>
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>Monto Total ($CLP)</label>
+                                        <input
+                                            type="number"
+                                            placeholder="Ej: 65000"
+                                            value={formGasto.monto}
+                                            onChange={e => setFormGasto({ ...formGasto, monto: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>Equipo Imputado</label>
+                                        <select
+                                            value={formGasto.id_maquina}
+                                            onChange={e => setFormGasto({ ...formGasto, id_maquina: e.target.value })}
+                                            required
+                                        >
+                                            <option value="">Seleccione equipo...</option>
+                                            {maquinarias.map(m => (
+                                                <option key={m.id_maquina} value={m.id_maquina}>
+                                                    {m.patente} — {m.marca} {m.modelo}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="adm-grid-3" style={{ marginTop: '14px' }}>
+                                    <div className="adm-field">
+                                        <label>Fecha de Emisión</label>
+                                        <input
+                                            type="date"
+                                            value={formGasto.fecha}
+                                            onChange={e => setFormGasto({ ...formGasto, fecha: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="adm-field">
+                                        <label>N° Folio Comprobante / Factura</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: B-12940"
+                                            value={formGasto.numero_comprobante}
+                                            onChange={e => setFormGasto({ ...formGasto, numero_comprobante: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="adm-form-actions">
+                                    <button type="submit" className="adm-btn-submit">
+                                        {editandoGastoId ? 'Guardar Cambios' : 'Imputar Gasto'}
+                                    </button>
+                                    <button type="button" className="adm-btn-secondary" onClick={() => setMostrarModalGasto(false)}>
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="adm-card">
+                        <div className="adm-table-wrap">
+                            <table className="adm-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Categoría</th>
+                                        <th>Comprobante</th>
+                                        <th>Equipo Imputado</th>
+                                        <th style={{ textAlign: 'right' }}>Monto ($CLP)</th>
+                                        <th style={{ textAlign: 'center', width: '90px' }}>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {gastosFiltrados.map(g => (
+                                        <tr key={g.id_gasto}>
+                                            <td>{g.fecha}</td>
+                                            <td><span className="adm-tag">{g.categoria_gasto}</span></td>
+                                            <td><span className="adm-code-tag">{g.numero_comprobante || 'S/N'}</span></td>
+                                            <td>Máquina ID #{g.id_maquina}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: '800', color: '#991b1b' }}>
+                                                ${parseInt(g.monto, 10).toLocaleString('es-CL')}
+                                            </td>
+                                            <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                <button
+                                                    className="adm-action-btn edit"
+                                                    onClick={() => abrirFormGasto(g)}
+                                                    title="Editar gasto"
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M12 20h9" />
+                                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                                    </svg>
+                                                </button>
+                                                <button
+                                                    className="adm-action-btn delete"
+                                                    onClick={() => eliminarGasto(g.id_gasto)}
+                                                    title="Eliminar comprobante"
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="3 6 5 6 21 6" />
+                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                        <line x1="10" y1="11" x2="10" y2="17" />
+                                                        <line x1="14" y1="11" x2="14" y2="17" />
+                                                    </svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {gastosFiltrados.length === 0 && (
+                                        <tr>
+                                            <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                                                {busquedaGasto ? `No se encontraron gastos para "${busquedaGasto}".` : 'No hay gastos registrados.'}
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==============================================================
+          TAB 6: PARTES DIARIOS
+          ============================================================== */}
+            {tabActiva === 'turnos' && (
+                <div className="adm-tab-content">
+                    <div className="adm-action-bar">
+                        <h2>Auditoría y Conciliación de Partes Diarios</h2>
+                    </div>
+
+                    <div className="adm-card">
+                        <div className="adm-table-wrap">
+                            <table className="adm-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID Parte</th>
+                                        <th>Fecha</th>
+                                        <th>Horario Faena</th>
+                                        <th>Horómetros (Inicial - Final)</th>
+                                        <th>Horas Computadas</th>
+                                        <th>Diesel (Litros)</th>
+                                        <th>Certificación en Obra</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {reportes.map(r => (
+                                        <tr key={r.id_report}>
+                                            <td>#{r.id_report}</td>
+                                            <td>{r.fecha}</td>
+                                            <td>{r.hora_entrada} - {r.hora_salida}</td>
+                                            <td>{r.horometro_inicial} hrs - {r.horometro_final} hrs</td>
+                                            <td style={{ fontWeight: '800', color: '#b45309' }}>{r.horas_trabajadas} hrs</td>
+                                            <td>{r.combustible_litros ? `${r.combustible_litros} L` : '0 L'}</td>
+                                            <td>
+                                                {r.firmado ? (
+                                                    <span className="adm-badge-green">Certificado</span>
+                                                ) : (
+                                                    <span className="adm-badge-red">Pendiente</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {reportes.length === 0 && (
+                                        <tr>
+                                            <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                                                No se registran partes diarios en la base de datos.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}

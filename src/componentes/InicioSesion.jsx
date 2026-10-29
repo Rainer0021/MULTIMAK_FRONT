@@ -1,18 +1,14 @@
 import React, { useState } from 'react';
 import axios from '../api/axios';
+import '../styles/InicioSesion.css';
 
-// Función para formatear el RUT chileno automáticamente mientras se escribe
 function formatearRutInput(valor) {
-    // Solo permitir números y la letra K
     const limpio = valor.replace(/[^0-9kK]/g, '').toUpperCase();
     if (limpio.length === 0) return '';
     if (limpio.length === 1) return limpio;
 
-    // Separar cuerpo y dígito verificador
-    const cuerpo = limpio.slice(0, -1).slice(0, 8); // máximo 8 dígitos de cuerpo
+    const cuerpo = limpio.slice(0, -1).slice(0, 8);
     const dv = limpio.slice(-1);
-
-    // Formatear con puntos
     const cuerpoFormateado = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     return `${cuerpoFormateado}-${dv}`;
 }
@@ -20,12 +16,12 @@ function formatearRutInput(valor) {
 export default function InicioSesion({ onLogin }) {
     const [rut, setRut] = useState('');
     const [contraseña, setContraseña] = useState('');
+    const [mostrarClave, setMostrarClave] = useState(false);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
 
     const manejarCambioRut = (e) => {
-        const formateado = formatearRutInput(e.target.value);
-        setRut(formateado);
+        setRut(formatearRutInput(e.target.value));
     };
 
     const manejarEnvio = async (e) => {
@@ -38,17 +34,14 @@ export default function InicioSesion({ onLogin }) {
         const claveLimpia = contraseña.trim();
 
         try {
-            // Intento 1: con el formato con puntos (ej: 11.111.111-1)
             let res;
             try {
-                res = await axios.post('/api/login/', { rut: rutFormateado, contraseña: claveLimpia });
+                res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
             } catch (err1) {
-                // Intento 2: sin puntos (ej: 11111111-1) por si el backend lo guarda directo
                 try {
-                    res = await axios.post('/api/login/', { rut: rutSinPuntos, contraseña: claveLimpia });
+                    res = await axios.post('/login/', { rut: rutSinPuntos, contraseña: claveLimpia });
                 } catch (err2) {
-                    // Intento 3: fallback a login-operador
-                    res = await axios.post('/api/login-operador/', { rut: rutFormateado, contraseña: claveLimpia });
+                    res = await axios.post('/login-operador/', { rut: rutFormateado, contraseña: claveLimpia });
                 }
             }
 
@@ -64,142 +57,121 @@ export default function InicioSesion({ onLogin }) {
     };
 
     return (
-        <div style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#f1f5f9',
-            padding: '20px',
-            boxSizing: 'border-box'
-        }}>
-            <div style={{
-                backgroundColor: '#ffffff',
-                borderRadius: '24px',
-                padding: '36px 32px',
-                width: '100%',
-                maxWidth: '400px',
-                boxShadow: '0 20px 40px -10px rgba(15, 23, 42, 0.08)',
-                border: '1px solid #e2e8f0',
-                boxSizing: 'border-box'
-            }}>
-                {/* Cabecera */}
-                <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-                    <div style={{
-                        backgroundColor: '#f59e0b',
-                        color: '#0f172a',
-                        fontWeight: '900',
-                        fontSize: '22px',
-                        width: '48px',
-                        height: '48px',
-                        borderRadius: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 12px'
-                    }}>
-                        M
+        <div className="login-container">
+            {/* PANEL LATERAL: IDENTIDAD OPERACIONAL */}
+            <div className="login-hero">
+                <div className="login-hero-bg" />
+
+                <div className="login-brand">
+                    <div className="login-brand-logo">M</div>
+                    <div>
+                        <div className="login-brand-title">
+                            MULTIMAK <span>360</span>
+                        </div>
+                        <div className="login-brand-subtitle">
+                            Arriendo de Maquinaria Pesada & Servicios
+                        </div>
                     </div>
-                    <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
-                        MULTIMAK <span style={{ color: '#d97706' }}>360</span>
-                    </h2>
-                    <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                        Acceso al Sistema de Gestión de Maquinaria
-                    </p>
                 </div>
 
-                {error && (
-                    <div style={{
-                        backgroundColor: '#fee2e2',
-                        color: '#991b1b',
-                        border: '1px solid #fca5a5',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        marginBottom: '18px',
-                        textAlign: 'center'
-                    }}>
-                        {error}
-                    </div>
-                )}
-
-                <form onSubmit={manejarEnvio} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                            RUT de Usuario
-                        </label>
-                        <input
-                            type="text"
-                            required
-                            maxLength={12}
-                            placeholder="11.111.111-1"
-                            value={rut}
-                            onChange={manejarCambioRut}
-                            style={{
-                                width: '100%',
-                                height: '44px',
-                                padding: '0 14px',
-                                borderRadius: '12px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '14px',
-                                fontFamily: 'Consolas, monospace',
-                                fontWeight: '700',
-                                color: '#0f172a',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                backgroundColor: '#f8fafc'
-                            }}
-                        />
+                <div className="login-hero-content">
+                    <div className="login-badge">
+                        <span className="login-badge-text">Terminal Operativo de Faena</span>
                     </div>
 
-                    <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                            Contraseña
-                        </label>
-                        <input
-                            type="password"
-                            required
-                            maxLength={30}
-                            placeholder="••••••••"
-                            value={contraseña}
-                            onChange={(e) => setContraseña(e.target.value)}
-                            style={{
-                                width: '100%',
-                                height: '44px',
-                                padding: '0 14px',
-                                borderRadius: '12px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '14px',
-                                color: '#0f172a',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                backgroundColor: '#f8fafc'
-                            }}
-                        />
+                    <h1 className="login-hero-title">
+                        Control de flota, partes diarios y liquidación.
+                    </h1>
+
+                    <p className="login-hero-desc">
+                        Registro diario de horómetros con validación en terreno, control de pautas de taller preventivo y emisión de facturación vinculada a HES aprobada.
+                    </p>
+
+                    <div className="login-metrics">
+                        <div className="metric-card">
+                            <div className="metric-label">Módulo Faena</div>
+                            <div className="metric-value">Partes Diarios</div>
+                            <div className="metric-sub">Firma de supervisor</div>
+                        </div>
+
+                        <div className="metric-card">
+                            <div className="metric-label">Mantenimiento</div>
+                            <div className="metric-value">500h / 1.000h</div>
+                            <div className="metric-sub">Pautas de servicio</div>
+                        </div>
+
+                        <div className="metric-card">
+                            <div className="metric-label">Administración</div>
+                            <div className="metric-value">HES & DTE</div>
+                            <div className="metric-sub">Conciliación mensual</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="login-hero-footer">
+                    <span className="footer-muted">MULTIMAK SpA • Puerto Natales / Punta Arenas</span>
+                    <span className="footer-tech">Sistema Interno</span>
+                </div>
+            </div>
+
+            {/* PANEL DERECHO: FORMULARIO */}
+            <div className="login-panel">
+                <div className="login-box">
+                    <div className="login-box-header">
+                        <span className="login-tag">Acceso al Sistema</span>
+                        <h2 className="login-box-title">Iniciar Sesión</h2>
+                        <p className="login-box-desc">
+                            Ingresa con tu RUT y contraseña.
+                        </p>
                     </div>
 
-                    <button
-                        type="submit"
-                        disabled={cargando}
-                        style={{
-                            height: '46px',
-                            backgroundColor: '#f59e0b',
-                            color: '#0f172a',
-                            border: 'none',
-                            borderRadius: '12px',
-                            fontSize: '13px',
-                            fontWeight: '800',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
-                            cursor: cargando ? 'not-allowed' : 'pointer',
-                            marginTop: '6px',
-                            boxShadow: '0 6px 16px -2px rgba(245, 158, 11, 0.4)'
-                        }}
-                    >
-                        {cargando ? 'Verificando...' : 'Iniciar Sesión'}
-                    </button>
-                </form>
+                    {error && <div className="login-error-alert">{error}</div>}
+
+                    <form onSubmit={manejarEnvio} className="login-form">
+                        <div className="form-group">
+                            <label className="form-group-label">RUT</label>
+                            <input
+                                type="text"
+                                required
+                                maxLength={12}
+                                placeholder="11.111.111-1"
+                                value={rut}
+                                onChange={manejarCambioRut}
+                                className="login-input login-input-rut"
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <div className="form-group-header">
+                                <label className="form-group-label">Contraseña</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setMostrarClave(!mostrarClave)}
+                                    className="btn-toggle-pass"
+                                >
+                                    {mostrarClave ? 'Ocultar' : 'Ver'}
+                                </button>
+                            </div>
+                            <input
+                                type={mostrarClave ? 'text' : 'password'}
+                                required
+                                maxLength={40}
+                                placeholder="••••••••"
+                                value={contraseña}
+                                onChange={(e) => setContraseña(e.target.value)}
+                                className="login-input"
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={cargando}
+                            className="btn-login-submit"
+                        >
+                            {cargando ? 'Ingresando...' : 'Entrar'}
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     );
