@@ -13,7 +13,7 @@ function formatearRutInput(valor) {
     return `${cuerpoFormateado}-${dv}`;
 }
 
-export default function InicioSesion({ onLogin }) {
+export default function InicioSesion({ onLogin, modoNoche, onToggleModoNoche }) {
     const [rut, setRut] = useState('');
     const [contraseña, setContraseña] = useState('');
     const [mostrarClave, setMostrarClave] = useState(false);
@@ -117,7 +117,33 @@ export default function InicioSesion({ onLogin }) {
             {/* PANEL DERECHO: FORMULARIO */}
             <div className="login-panel">
                 <div className="login-box">
-                    <div className="login-box-header">
+                    <div className="login-box-header" style={{ position: 'relative' }}>
+                        {onToggleModoNoche && (
+                            <button
+                                type="button"
+                                onClick={onToggleModoNoche}
+                                style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    top: 0,
+                                    background: modoNoche ? '#1e293b' : '#f1f5f9',
+                                    border: modoNoche ? '1px solid #334155' : '1px solid #cbd5e1',
+                                    color: modoNoche ? '#f8fafc' : '#0f172a',
+                                    borderRadius: '8px',
+                                    padding: '5px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                                title={modoNoche ? 'Cambiar a Modo Día' : 'Cambiar a Modo Noche'}
+                            >
+                                <span>{modoNoche ? '☀️' : '🌙'}</span>
+                                <span>{modoNoche ? 'Día' : 'Noche'}</span>
+                            </button>
+                        )}
                         <span className="login-tag">Acceso al Sistema</span>
                         <h2 className="login-box-title">Iniciar Sesión</h2>
                         <p className="login-box-desc">

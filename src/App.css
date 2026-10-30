@@ -1,12 +1,33 @@
 /* Variables de color de MULTIMAK 360 */
 :root {
   --bg-principal: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-alt: #f8fafc;
   --azul-marino: #0f172a;
   --azul-tarjeta: #1e293b;
   --ambar-acento: #f59e0b;
   --borde-suave: #e2e8f0;
   --texto-oscuro: #0f172a;
   --texto-gris: #64748b;
+  --header-bg: #ffffff;
+  --header-border: #e2e8f0;
+  --user-chip-bg: #f1f5f9;
+}
+
+body.dark-mode,
+[data-theme="dark"] {
+  --bg-principal: #0b0f19;
+  --bg-card: #151e2e;
+  --bg-card-alt: #1a2436;
+  --azul-marino: #0b0f19;
+  --azul-tarjeta: #1e293b;
+  --ambar-acento: #f59e0b;
+  --borde-suave: #283548;
+  --texto-oscuro: #f8fafc;
+  --texto-gris: #94a3b8;
+  --header-bg: #111827;
+  --header-border: #1f2937;
+  --user-chip-bg: #1e293b;
 }
 
 /* Cabecera oscura superior */
@@ -25,11 +46,12 @@
 
 /* Tarjetas blancas de contenido */
 .card-blanca {
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   border-radius: 16px;
   border: 1px solid var(--borde-suave);
   padding: 24px;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+  color: var(--texto-oscuro);
 }
 
 /* Tablas estándar */
@@ -42,7 +64,7 @@
 
 .tabla-general th {
   padding: 12px 16px;
-  background-color: #f8fafc;
+  background-color: var(--bg-card-alt);
   color: var(--texto-gris);
   font-weight: 800;
   border-bottom: 2px solid var(--borde-suave);
@@ -50,13 +72,14 @@
 
 .tabla-general td {
   padding: 14px 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--borde-suave);
+  color: var(--texto-oscuro);
 }
 
 /* Botón ámbar de acción */
 .btn-nuevo {
   background-color: var(--ambar-acento);
-  color: var(--azul-marino);
+  color: #0f172a;
   border: none;
   padding: 10px 18px;
   border-radius: 10px;
@@ -64,8 +87,22 @@
   font-size: 12px;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+  transition: all 0.2s ease;
 }
 
 .btn-nuevo:hover {
   background-color: #d97706;
+}
+
+/* Estilo botón Modo Noche */
+.btn-toggle-tema {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }

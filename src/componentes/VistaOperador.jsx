@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from '../api/axios';
 import '../styles/VistaOperador.css';
 
-export default function VistaOperador({ usuario }) {
+export default function VistaOperador({ operador, usuario, modoNoche }) {
     const [maquinarias, setMaquinarias] = useState([]);
     const [cargando, setCargando] = useState(false);
     const [mensajeExito, setMensajeExito] = useState('');
@@ -155,7 +155,7 @@ export default function VistaOperador({ usuario }) {
 
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
-        ctx.strokeStyle = '#0f172a';
+        ctx.strokeStyle = modoNoche ? '#38bdf8' : '#0f172a';
         ctx.lineTo(clienteX - rect.left, clienteY - rect.top);
         ctx.stroke();
     };

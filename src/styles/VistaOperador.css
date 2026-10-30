@@ -4,9 +4,12 @@
 
 html,
 body {
-    background-color: #f1f5f9 !important;
     margin: 0;
     padding: 0;
+}
+
+body.dark-mode {
+    background-color: #0b0f19 !important;
 }
 
 .op-view-container {
@@ -504,4 +507,85 @@ body {
         cursor: not-allowed;
         user-select: none;
     }
+}
+
+/* ==========================================================================
+   MODO NOCHE - VISTA OPERADOR
+   ========================================================================== */
+body.dark-mode .op-view-container {
+    color: #f1f5f9;
+}
+
+body.dark-mode .op-main-title {
+    color: #f8fafc;
+}
+
+body.dark-mode .op-main-desc {
+    color: #94a3b8;
+}
+
+body.dark-mode .op-card {
+    background-color: #151e2e;
+    border-color: #283548;
+    color: #f1f5f9;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-mode .op-card-title {
+    color: #f8fafc;
+}
+
+body.dark-mode .op-card-desc {
+    color: #94a3b8;
+}
+
+body.dark-mode .op-label {
+    color: #cbd5e1;
+}
+
+body.dark-mode .op-select,
+body.dark-mode .op-input {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+body.dark-mode .op-input-readonly {
+    background-color: #1e293b !important;
+    color: #94a3b8 !important;
+    border-color: #334155 !important;
+}
+
+body.dark-mode .op-hours-display {
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .op-supervisor-card {
+    background-color: #0f172a;
+    border-color: #334155;
+}
+
+body.dark-mode .op-tab-btn {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+body.dark-mode .op-tab-btn.active {
+    background-color: #f59e0b;
+    color: #0f172a;
+}
+
+body.dark-mode .op-canvas-container {
+    background-color: #0f172a;
+    border-color: #334155;
+}
+
+body.dark-mode .op-canvas {
+    background-color: #1e293b;
+}
+
+body.dark-mode .op-terms {
+    color: #94a3b8;
 }

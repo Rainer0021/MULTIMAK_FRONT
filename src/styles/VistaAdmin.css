@@ -706,3 +706,514 @@
 .adm-btn-submit:hover {
     background-color: #1e293b;
 }
+
+/* ==========================================================================
+   COMPONENTES DE GESTIÓN DOCUMENTAL (S3) Y SUBIDA DE ARCHIVOS
+   ========================================================================== */
+.adm-uploader-box {
+    margin-top: 14px;
+    padding: 16px;
+    background-color: #f8fafc;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.adm-uploader-box:hover {
+    border-color: #f59e0b;
+    background-color: #fffbeb;
+}
+
+.adm-uploader-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.adm-uploader-icon {
+    font-size: 26px;
+}
+
+.adm-uploader-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.adm-uploader-sub {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.adm-uploader-file-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+.adm-file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background-color: #e0f2fe;
+    color: #0369a1;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.adm-btn-file-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.adm-btn-file-view:hover {
+    background-color: #e2e8f0;
+    border-color: #94a3b8;
+}
+
+.adm-btn-file-view.s3-ready {
+    background-color: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #047857;
+}
+
+.adm-btn-file-view.s3-ready:hover {
+    background-color: #d1fae5;
+}
+
+/* Modal Visor de Documentos (S3) */
+.adm-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.adm-modal-content {
+    background-color: #ffffff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 820px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+}
+
+.adm-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+}
+
+.adm-modal-title-group h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.adm-modal-title-group p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.adm-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.adm-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f1f5f9;
+}
+
+.adm-modal-footer {
+    padding: 14px 24px;
+    border-top: 1px solid #e2e8f0;
+    background-color: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #64748b;
+}
+
+/* ==========================================================================
+   MATRIZ DE RENTABILIDAD POR MAQUINARIA
+   ========================================================================== */
+.adm-profit-card {
+    background-color: #ffffff;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    padding: 24px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+    margin-bottom: 24px;
+}
+
+.adm-profit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.adm-profit-title-box h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+}
+
+.adm-profit-title-box p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.adm-rent-bar-container {
+    width: 100%;
+    height: 7px;
+    background-color: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.adm-rent-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.adm-badge-rent-high {
+    background-color: #dcfce7;
+    color: #15803d;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.adm-badge-rent-mod {
+    background-color: #fef3c7;
+    color: #b45309;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.adm-badge-rent-low {
+    background-color: #ffedd5;
+    color: #c2410c;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.adm-badge-rent-loss {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+/* ==========================================================================
+   REGLAS COMPLETAS DE MODO NOCHE (DARK MODE)
+   ========================================================================== */
+body.dark-mode .adm-view-container {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-top-header {
+    border-bottom-color: #1f2937;
+}
+
+body.dark-mode .adm-page-title {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-page-desc {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-period-label {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-select-period {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-btn-refresh {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-btn-refresh:hover {
+    background-color: #283548;
+}
+
+body.dark-mode .adm-nav-group {
+    border-bottom-color: #1f2937;
+}
+
+body.dark-mode .adm-nav-btn {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-nav-btn:hover {
+    color: #f8fafc;
+    background-color: #1e293b;
+}
+
+body.dark-mode .adm-nav-btn.active {
+    color: #f59e0b;
+    border-bottom-color: #f59e0b;
+}
+
+body.dark-mode .adm-nav-badge {
+    background-color: #334155;
+    color: #cbd5e1;
+}
+
+body.dark-mode .adm-nav-btn.active .adm-nav-badge {
+    background-color: #78350f;
+    color: #fef3c7;
+}
+
+body.dark-mode .adm-kpi-card {
+    background-color: #151e2e;
+    border-color: #283548;
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-kpi-sub {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-kpi-value {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-kpi-foot {
+    color: #64748b;
+}
+
+body.dark-mode .adm-kpi-card.highlight {
+    background-color: #0f172a;
+    border-color: #f59e0b;
+}
+
+body.dark-mode .adm-card,
+body.dark-mode .adm-profit-card {
+    background-color: #151e2e;
+    border-color: #283548;
+    color: #f8fafc;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-mode .adm-card-title,
+body.dark-mode .adm-profit-title-box h3 {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-card-sub,
+body.dark-mode .adm-profit-title-box p {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-table th {
+    background-color: #1a2436;
+    color: #94a3b8;
+    border-bottom-color: #283548;
+}
+
+body.dark-mode .adm-table td {
+    color: #cbd5e1;
+    border-bottom-color: #1e293b;
+}
+
+body.dark-mode .adm-table tr:hover td {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+body.dark-mode .adm-search-input {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-form-box {
+    background-color: #151e2e;
+    border-color: #334155;
+}
+
+body.dark-mode .adm-field label {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-field input,
+body.dark-mode .adm-field select,
+body.dark-mode .adm-field textarea {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-btn-secondary {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+body.dark-mode .adm-btn-submit {
+    background-color: #f59e0b;
+    color: #0f172a;
+}
+
+body.dark-mode .adm-btn-submit:hover {
+    background-color: #d97706;
+}
+
+body.dark-mode .adm-fleet-item {
+    background-color: #0f172a;
+    border-color: #283548;
+}
+
+body.dark-mode .adm-fleet-badge {
+    background-color: #1e293b;
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-fleet-type {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-progress-bg {
+    background-color: #1e293b;
+}
+
+body.dark-mode .adm-progress-text {
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-fleet-horo {
+    border-left-color: #283548;
+}
+
+body.dark-mode .adm-fleet-horo strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-code-tag {
+    background-color: #1e293b;
+    color: #38bdf8;
+    border-color: #334155;
+}
+
+body.dark-mode .adm-tag {
+    background-color: #1e293b;
+    color: #94a3b8;
+}
+
+body.dark-mode .adm-uploader-box {
+    background-color: #0f172a;
+    border-color: #334155;
+}
+
+body.dark-mode .adm-uploader-title {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-uploader-file-info {
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .adm-btn-file-view {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+body.dark-mode .adm-btn-file-view:hover {
+    background-color: #283548;
+}
+
+body.dark-mode .adm-modal-content {
+    background-color: #151e2e;
+    border-color: #334155;
+}
+
+body.dark-mode .adm-modal-header {
+    background-color: #0f172a;
+    border-bottom-color: #283548;
+}
+
+body.dark-mode .adm-modal-title-group h3 {
+    color: #f8fafc;
+}
+
+body.dark-mode .adm-modal-body {
+    background-color: #0b0f19;
+}
+
+body.dark-mode .adm-modal-footer {
+    background-color: #0f172a;
+    border-top-color: #283548;
+}
+
+body.dark-mode .adm-rent-bar-container {
+    background-color: #1e293b;
+}

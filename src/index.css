@@ -4,16 +4,32 @@
   box-sizing: border-box;
 }
 
+:root {
+  --color-bg-base: #f1f5f9;
+  --color-text-base: #0f172a;
+}
+
+html[data-theme="dark"], body.dark-mode {
+  --color-bg-base: #0b0f19;
+  --color-text-base: #f8fafc;
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;
   min-height: 100vh;
-  background-color: #f1f5f9;
-  color: #0f172a;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-base);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-input, select, button {
+body.dark-mode {
+  background-color: #0b0f19 !important;
+  color: #f8fafc !important;
+}
+
+input, select, button, textarea {
   font-family: inherit;
 }
