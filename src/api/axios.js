@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://multimakspa.duckdns.org/api',
+  baseURL: 'https://multimakspa.duckdns.org/api',
 });
 
 // Interceptor para permitir multipart/form-data automático al enviar FormData
