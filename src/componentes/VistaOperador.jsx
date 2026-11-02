@@ -1,0 +1,569 @@
+import React, { useState, useEffect, useRef } from 'react';
+import axios from '../api/axios';
+import '../styles/VistaOperador.css';
+
+const formatoFechaCL = (iso) => {
+    if (!iso) return '';
+    const [a, m, d] = String(iso).slice(0, 10).split('-');
+    return `${d}-${m}-${a}`;
+};
+
+const extraerErrorApi = (err, defecto) => {
+    const d = err && err.response && err.response.data;
+    if (!d) return defecto;
+    if (typeof d === 'string') return d.length < 200 ? d : defecto;
+    const partes = Object.values(d).flat().map((x) => (typeof x === 'string' ? x : JSON.stringify(x)));
+    return partes.length ? partes.join(' ') : defecto;
+};
+
+export default function VistaOperador({ operador, usuario, modoNoche }) {
+    const [contratos, setContratos] = useState([]);
+    const [reportesRecientes, setReportesRecientes] = useState([]);
+    const [cargando, setCargando] = useState(false);
+    const [mensajeExito, setMensajeExito] = useState('');
+    const [errores, setErrores] = useState({});
+
+    const fechaHoy = new Date().toLocaleDateString('en-CA'); // fecha local YYYY-MM-DD
+
+    // Formulario
+    const [idContrato, setIdContrato] = useState('');
+    const [idMaquina, setIdMaquina] = useState('');
+    const [horaEntrada, setHoraEntrada] = useState('08:00');
+    const [horaSalida, setHoraSalida] = useState('18:00');
+    const [horometroInicial, setHorometroInicial] = useState('');
+    const [horometroFinal, setHorometroFinal] = useState('');
+    const [cargoCombustible, setCargoCombustible] = useState(false);
+    const [combustible, setCombustible] = useState('');
+
+    // Certificación
+    const [metodoCertificacion, setMetodoCertificacion] = useState('digital');
+    const [firmaDibujada, setFirmaDibujada] = useState(false);
+    const [archivoFoto, setArchivoFoto] = useState(null);
+    const [declaracionSupervisor, setDeclaracionSupervisor] = useState(false);
+
+    const canvasRef = useRef(null);
+    const [dibujando, setDibujando] = useState(false);
+
+    // Cálculos
+    const hInicialNum = parseFloat(horometroInicial) || 0;
+    const hFinalNum = parseFloat(horometroFinal) || 0;
+    const diferenciaHoras = hFinalNum - hInicialNum;
+    const horasTrabajadasCalculadas = idMaquina && hFinalNum > hInicialNum
+        ? diferenciaHoras.toFixed(1)
+        : '0.0';
+
+    const contratoActual = contratos.find((c) => String(c.id_contrato) === String(idContrato));
+    const maquinasDelContrato = contratoActual ? contratoActual.maquinas : [];
+
+    const seleccionarMaquina = (m) => {
+        setIdMaquina(String(m.id_maquina));
+        setHorometroInicial(String(m.horometro_actual ?? 0));
+    };
+
+    const cargarDatos = async () => {
+        try {
+            const [resCon, resRep] = await Promise.all([
+                axios.get('/contratos-operador/').catch(() => ({ data: [] })),
+                axios.get('/reports/').catch(() => axios.get('/report/')).catch(() => ({ data: [] }))
+            ]);
+
+            const dataCon = Array.isArray(resCon.data) ? resCon.data : [];
+            const dataRep = resRep.data?.results || (Array.isArray(resRep.data) ? resRep.data : []);
+
+            setContratos(dataCon);
+
+            // Solo los partes de este operador
+            const idOp = operador?.id_operador;
+            const propios = idOp ? dataRep.filter((r) => String(r.id_operador) === String(idOp)) : [];
+            setReportesRecientes(propios.slice(0, 6));
+
+            if (idContrato) {
+                // Se mantiene la selección y se refresca el horómetro desde el servidor
+                const c = dataCon.find((x) => String(x.id_contrato) === String(idContrato));
+                const m = c && c.maquinas.find((x) => String(x.id_maquina) === String(idMaquina));
+                if (m) setHorometroInicial(String(m.horometro_actual ?? 0));
+            } else if (dataCon.length === 1) {
+                // Un solo contrato vigente: queda elegido
+                setIdContrato(String(dataCon[0].id_contrato));
+                if (dataCon[0].maquinas.length === 1) seleccionarMaquina(dataCon[0].maquinas[0]);
+            }
+        } catch (err) {
+            console.error('Error al cargar datos del operador:', err);
+        }
+    };
+
+    useEffect(() => {
+        cargarDatos();
+    }, []);
+
+    const handleCambioContrato = (e) => {
+        const nuevoId = e.target.value;
+        setIdContrato(nuevoId);
+        setHorometroFinal('');
+        setErrores((prev) => ({ ...prev, idContrato: null, idMaquina: null, horometroFinal: null }));
+
+        const c = contratos.find((x) => String(x.id_contrato) === String(nuevoId));
+        const disponibles = c ? c.maquinas.filter((m) => m.estado !== 'EN TALLER') : [];
+        if (disponibles.length === 1) {
+            seleccionarMaquina(disponibles[0]);   // una sola máquina: queda elegida
+        } else {
+            setIdMaquina('');                     // varias: el operador elige la correcta
+            setHorometroInicial('');
+        }
+    };
+
+    const handleCambioMaquina = (e) => {
+        const nuevoId = e.target.value;
+        setHorometroFinal('');
+        setErrores((prev) => ({ ...prev, idMaquina: null, horometroFinal: null }));
+
+        const m = maquinasDelContrato.find((x) => String(x.id_maquina) === String(nuevoId));
+        if (m) {
+            seleccionarMaquina(m);
+        } else {
+            setIdMaquina('');
+            setHorometroInicial('');
+        }
+    };
+
+    const handleCambioHorometroFinal = (e) => {
+        const valor = e.target.value;
+        setHorometroFinal(valor);
+
+        if (!valor || valor.trim() === '') {
+            setErrores((prev) => ({ ...prev, horometroFinal: null }));
+            return;
+        }
+
+        const finalNum = parseFloat(valor);
+        if (isNaN(finalNum)) {
+            setErrores((prev) => ({ ...prev, horometroFinal: 'Valor no válido.' }));
+            return;
+        }
+
+        if (finalNum <= hInicialNum) {
+            setErrores((prev) => ({
+                ...prev,
+                horometroFinal: `Debe ser mayor a ${hInicialNum} hrs.`
+            }));
+            return;
+        }
+
+        const dif = finalNum - hInicialNum;
+        if (dif > 24) {
+            setErrores((prev) => ({
+                ...prev,
+                horometroFinal: `Excede el límite de 24 hrs (${dif.toFixed(1)} hrs).`
+            }));
+            return;
+        }
+
+        setErrores((prev) => ({ ...prev, horometroFinal: null }));
+    };
+
+    // Canvas Firma
+    const iniciarDibujo = (e) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        ctx.beginPath();
+        ctx.moveTo(clienteX - rect.left, clienteY - rect.top);
+        setDibujando(true);
+        setFirmaDibujada(true);
+        if (errores.firma) setErrores((prev) => ({ ...prev, firma: null }));
+    };
+
+    const dibujar = (e) => {
+        if (!dibujando) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = modoNoche ? '#38bdf8' : '#0f172a';
+        ctx.lineTo(clienteX - rect.left, clienteY - rect.top);
+        ctx.stroke();
+    };
+
+    const detenerDibujo = () => setDibujando(false);
+
+    const limpiarFirma = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setFirmaDibujada(false);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setMensajeExito('');
+
+        const nuevosErrores = {};
+        if (!operador?.id_operador) {
+            setErrores({ general: 'Tu cuenta no está asociada a un operador. Avisa al administrador.' });
+            return;
+        }
+        if (!idContrato) nuevosErrores.idContrato = 'Selecciona el contrato.';
+        if (idContrato && !idMaquina) nuevosErrores.idMaquina = 'Selecciona la máquina del contrato.';
+        if (!horometroFinal) {
+            nuevosErrores.horometroFinal = 'Ingresa el horómetro final.';
+        } else if (hFinalNum <= hInicialNum) {
+            nuevosErrores.horometroFinal = `Debe ser mayor al inicial (${hInicialNum}).`;
+        }
+
+        if (cargoCombustible && (!combustible || parseFloat(combustible) <= 0)) {
+            nuevosErrores.combustible = 'Indica los litros cargados.';
+        }
+
+        if (!declaracionSupervisor) {
+            nuevosErrores.declaracion = 'El supervisor debe certificar la conformidad.';
+        }
+
+        if (metodoCertificacion === 'digital' && !firmaDibujada) {
+            nuevosErrores.firma = 'Firma digital requerida en pantalla.';
+        }
+
+        if (metodoCertificacion === 'foto' && !archivoFoto) {
+            nuevosErrores.firma = 'Adjunta la fotografía del comprobante.';
+        }
+
+        if (Object.keys(nuevosErrores).length > 0) {
+            setErrores(nuevosErrores);
+            return;
+        }
+
+        setCargando(true);
+
+        const payload = {
+            id_operador: operador.id_operador,
+            id_contrato: parseInt(idContrato, 10),
+            id_maquina: parseInt(idMaquina, 10),
+            fecha: fechaHoy,
+            hora_entrada: horaEntrada.length === 5 ? `${horaEntrada}:00` : horaEntrada,
+            hora_salida: horaSalida.length === 5 ? `${horaSalida}:00` : horaSalida,
+            horometro_inicial: parseFloat(hInicialNum),
+            horometro_final: parseFloat(hFinalNum),
+            horas_trabajadas: Math.round(parseFloat(horasTrabajadasCalculadas)),
+            combustible_litros: cargoCombustible ? (parseFloat(combustible) || 0) : 0,
+            firmado: true,
+        };
+
+        try {
+            await axios.post('/reports/', payload);
+            setMensajeExito('¡Parte diario ingresado con éxito!');
+            setErrores({});
+            setHorometroInicial(horometroFinal);
+            setHorometroFinal('');
+            setCargoCombustible(false);
+            setCombustible('');
+            setDeclaracionSupervisor(false);
+            limpiarFirma();
+            cargarDatos();
+        } catch (err) {
+            setErrores({ general: extraerErrorApi(err, 'Error al enviar el reporte.') });
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    return (
+        <div className={`op-view-container ${modoNoche ? 'dark-mode' : ''}`}>
+            {/* ENCABEZADO SUPERIOR */}
+            <div className="op-top-banner">
+                <div>
+                    <span className="op-pill-tag">PARTE DIARIO DE OPERACIONES • MULTIMAK 360</span>
+                    <h1 className="op-main-title">Registro de Turno y Horómetro</h1>
+                    <p className="op-main-desc">Ingrese las horas trabajadas, carga de combustible y firma digital del supervisor en faena.</p>
+                </div>
+                
+                <div className="op-date-box">
+                    <span className="op-date-label">FECHA ACTUAL</span>
+                    <span className="op-date-val">{formatoFechaCL(fechaHoy)}</span>
+                </div>
+            </div>
+
+            {mensajeExito && <div className="op-alert-ok">{mensajeExito}</div>}
+            {errores.general && <div className="op-alert-fail">{errores.general}</div>}
+
+            <div className="op-layout-grid">
+                {/* COLUMNA IZQUIERDA: FORMULARIO DIARIO */}
+                <div className="op-card">
+                    <form onSubmit={handleSubmit} className="op-form" noValidate>
+                        
+                        <div className="op-form-section">
+                            <label className="op-label">Contrato</label>
+                            <select
+                                className={`op-input op-select ${errores.idContrato ? 'op-input-error' : ''}`}
+                                value={idContrato}
+                                onChange={handleCambioContrato}
+                            >
+                                {contratos.length === 0 ? (
+                                    <option value="">No hay contratos vigentes con máquinas</option>
+                                ) : (
+                                    <>
+                                        <option value="">Seleccione el contrato...</option>
+                                        {contratos.map((c) => (
+                                            <option key={c.id_contrato} value={c.id_contrato}>
+                                                {c.nombre} — {c.cliente}
+                                            </option>
+                                        ))}
+                                    </>
+                                )}
+                            </select>
+                            {errores.idContrato && <span className="op-field-error">{errores.idContrato}</span>}
+                        </div>
+
+                        <div className="op-form-section">
+                            <label className="op-label">Máquina del contrato</label>
+                            <select
+                                className={`op-input op-select ${errores.idMaquina ? 'op-input-error' : ''}`}
+                                value={idMaquina}
+                                onChange={handleCambioMaquina}
+                                disabled={!idContrato}
+                            >
+                                {!idContrato ? (
+                                    <option value="">Primero seleccione el contrato</option>
+                                ) : (
+                                    <>
+                                        {maquinasDelContrato.length > 1 && <option value="">Seleccione la máquina...</option>}
+                                        {maquinasDelContrato.map((m) => (
+                                            <option
+                                                key={m.id_maquina}
+                                                value={m.id_maquina}
+                                                disabled={m.estado === 'EN TALLER'}
+                                            >
+                                                {m.patente} — {m.marca} {m.modelo} ({m.tipo}){m.estado === 'EN TALLER' ? ' — en taller' : ''}
+                                            </option>
+                                        ))}
+                                    </>
+                                )}
+                            </select>
+                            {maquinasDelContrato.length > 1 && !idMaquina && (
+                                <span className="op-sub-txt">Este contrato tiene {maquinasDelContrato.length} máquinas: elija la que operó hoy.</span>
+                            )}
+                            {errores.idMaquina && <span className="op-field-error">{errores.idMaquina}</span>}
+                        </div>
+
+                        <div className="op-grid-2">
+                            <div className="op-form-section">
+                                <label className="op-label">Hora Inicio Faena</label>
+                                <input
+                                    type="time"
+                                    className="op-input"
+                                    value={horaEntrada}
+                                    onChange={(e) => setHoraEntrada(e.target.value)}
+                                />
+                            </div>
+                            <div className="op-form-section">
+                                <label className="op-label">Hora Término Faena</label>
+                                <input
+                                    type="time"
+                                    className="op-input"
+                                    value={horaSalida}
+                                    onChange={(e) => setHoraSalida(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="op-grid-2">
+                            <div className="op-form-section">
+                                <label className="op-label">
+                                    Horómetro Inicial (hrs) <span className="op-sub-txt">(Base)</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    readOnly
+                                    className="op-input op-input-readonly"
+                                    value={horometroInicial}
+                                />
+                            </div>
+
+                            <div className="op-form-section">
+                                <label className="op-label">Horómetro Final (hrs)</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    className={`op-input ${errores.horometroFinal ? 'op-input-error' : ''}`}
+                                    placeholder={`Mayor a ${horometroInicial || 0}`}
+                                    value={horometroFinal}
+                                    onChange={handleCambioHorometroFinal}
+                                />
+                                {errores.horometroFinal && <span className="op-field-error">{errores.horometroFinal}</span>}
+                            </div>
+                        </div>
+
+                        <div className="op-summary-box">
+                            <span className="op-summary-label">Horas Computadas en Faena:</span>
+                            <span className="op-summary-num">{horasTrabajadasCalculadas} hrs</span>
+                        </div>
+
+                        <div className="op-fuel-wrapper">
+                            <label className="op-toggle-container">
+                                <input
+                                    type="checkbox"
+                                    className="op-checkbox"
+                                    checked={cargoCombustible}
+                                    onChange={(e) => setCargoCombustible(e.target.checked)}
+                                />
+                                <span className="op-toggle-text">¿Se abasteció combustible en el turno?</span>
+                            </label>
+
+                            {cargoCombustible && (
+                                <div className="op-fuel-expand">
+                                    <label className="op-label">Litros de Diesel Cargados</label>
+                                    <input
+                                        type="number"
+                                        step="0.5"
+                                        className={`op-input ${errores.combustible ? 'op-input-error' : ''}`}
+                                        placeholder="Ej: 45.0"
+                                        value={combustible}
+                                        onChange={(e) => setCombustible(e.target.value)}
+                                    />
+                                    {errores.combustible && <span className="op-field-error">{errores.combustible}</span>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* CERTIFICACIÓN SUPERVISOR */}
+                        <div className="op-supervisor-card">
+                            <div className="op-supervisor-header">
+                                <span className="op-sub-badge">Certificación en Faena</span>
+                                <h3 className="op-sub-title">Validación por Supervisor de Obra</h3>
+                            </div>
+
+                            <div className="op-declaracion-box">
+                                <p className="op-declaracion-texto">
+                                    <strong>DECLARACIÓN OPERATIVA:</strong> Certifico que los horómetros e informes reflejan el trabajo efectivo en obra.
+                                </p>
+                                <label className="op-check-label">
+                                    <input
+                                        type="checkbox"
+                                        className="op-checkbox"
+                                        checked={declaracionSupervisor}
+                                        onChange={(e) => setDeclaracionSupervisor(e.target.checked)}
+                                    />
+                                    <span>El supervisor aprueba la conformidad del turno.</span>
+                                </label>
+                                {errores.declaracion && <span className="op-field-error">{errores.declaracion}</span>}
+                            </div>
+
+                            <div className="op-signature-tabs">
+                                <button
+                                    type="button"
+                                    className={`op-tab-btn ${metodoCertificacion === 'digital' ? 'active' : ''}`}
+                                    onClick={() => setMetodoCertificacion('digital')}
+                                >
+                                    Firma
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`op-tab-btn ${metodoCertificacion === 'foto' ? 'active' : ''}`}
+                                    onClick={() => setMetodoCertificacion('foto')}
+                                >
+                                    Adjuntar foto de respaldo
+                                </button>
+                            </div>
+
+                            {metodoCertificacion === 'digital' ? (
+                                <div className="op-canvas-container">
+                                    <div className="op-canvas-instructions">
+                                        <span>Firme dentro del recuadro usando el dedo o puntero:</span>
+                                        <button type="button" onClick={limpiarFirma} className="op-btn-clear">
+                                            Borrar firma
+                                        </button>
+                                    </div>
+                                    <div className="op-canvas-frame">
+                                        <canvas
+                                            ref={canvasRef}
+                                            width={440}
+                                            height={140}
+                                            className="op-signature-canvas"
+                                            onMouseDown={iniciarDibujo}
+                                            onMouseMove={dibujar}
+                                            onMouseUp={detenerDibujo}
+                                            onMouseLeave={detenerDibujo}
+                                            onTouchStart={iniciarDibujo}
+                                            onTouchMove={dibujar}
+                                            onTouchEnd={detenerDibujo}
+                                        />
+                                    </div>
+                                    {errores.firma && <span className="op-field-error">{errores.firma}</span>}
+                                </div>
+                            ) : (
+                                <div className="op-upload-container">
+                                    <label className="op-upload-box">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="op-file-input"
+                                            onChange={(e) => e.target.files && setArchivoFoto(e.target.files[0])}
+                                        />
+                                        <div className="op-upload-content">
+                                            <span className="op-upload-icon"></span>
+                                            <span className="op-upload-title">
+                                                {archivoFoto ? archivoFoto.name : 'Tomar foto del comprobante firmado'}
+                                            </span>
+                                        </div>
+                                    </label>
+                                    {errores.firma && <span className="op-field-error">{errores.firma}</span>}
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={cargando}
+                            className="op-btn-submit"
+                        >
+                            {cargando ? 'Guardando...' : 'Registrar Parte Diario'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* COLUMNA DERECHA: HISTORIAL ÚNICO */}
+                <div className="op-sidebar">
+                    <div className="op-side-card">
+                        <div className="op-side-header">
+                            <h3 className="op-side-title">Mis Últimos Partes</h3>
+                        </div>
+
+                        <div className="op-history-list">
+                            {reportesRecientes.map((r, i) => {
+                                const patenteStr = r.maquina_patente || `Máquina #${r.id_maquina}`;
+
+                                return (
+                                    <div key={i} className="op-history-card">
+                                        <div className="op-history-head">
+                                            <span className="op-history-date">{formatoFechaCL(r.fecha)}</span>
+                                            <span className="op-history-badge">+{r.horas_trabajadas} hrs</span>
+                                        </div>
+                                        <div className="op-history-details">
+                                            <span className="op-history-patente">{patenteStr}</span>
+                                            {r.combustible_litros > 0 && (
+                                                <span className="op-history-fuel"> {r.combustible_litros}L Combustible</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {reportesRecientes.length === 0 && (
+                                <p className="op-sub-txt">Sin registros de partes previos.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    );
+}

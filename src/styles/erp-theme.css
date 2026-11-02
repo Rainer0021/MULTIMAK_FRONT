@@ -1,0 +1,834 @@
+/* ==========================================================================
+   MULTIMAK 360 - Tema ERP unificado
+   Se carga DESPUÉS de los CSS de cada vista. No requiere cambios en el JSX.
+   Todas las reglas usan "html body" para ganar en especificidad sin depender
+   del orden de importación.
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+/* --------------------------------------------------------------------------
+   1. TOKENS
+   -------------------------------------------------------------------------- */
+:root {
+    --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+
+    --bg: #e6ecf4;
+    --surface: #ffffff;
+    --surface-2: #f3f6fb;
+    --th-bg: #0f2a4a;
+    --th-fg: #ffffff;
+    --hover: #edf3fb;
+    --line: #d9e1ec;
+    --line-strong: #b4c0d2;
+    --navy: #0f2a4a;
+    --navy-2: #1a3e68;
+    --accent: #0b6bcb;
+    --shadow: 0 1px 2px rgba(15, 42, 74, 0.06), 0 4px 14px rgba(15, 42, 74, 0.07);
+
+    --ink: #14181f;
+    --ink-2: #3b4452;
+    --muted: #667085;
+
+    --primary: #0b5cab;
+    --primary-hover: #094a8a;
+    --primary-fg: #ffffff;
+    --brand: #e8a317;
+
+    --ok: #157347;   --ok-bg: #e8f4ed;   --ok-line: #b7dcc6;
+    --err: #b42318;  --err-bg: #fdecea;  --err-line: #f3c1bc;
+    --warn: #9a5b00; --warn-bg: #fdf3e0; --warn-line: #f1d9a6;
+    --info: #1d4f91; --info-bg: #e8f0fa; --info-line: #bcd0ec;
+
+    --ring: rgba(11, 107, 203, 0.22);
+    --r-sm: 4px;
+    --r: 6px;
+    --r-lg: 8px;
+    --ctl-h: 36px;
+}
+
+/* Modo noche: mismos valores que ya usaba Operador/Contador, para que
+   no haya saltos de color si se activa. */
+body.dark-mode,
+.dark-mode {
+    --bg: #0b0f19;
+    --surface: #151e2e;
+    --surface-2: #1a2436;
+    --th-bg: #1a2436;
+    --th-fg: #cbd3df;
+    --navy: #101a2c;
+    --navy-2: #1a2740;
+    --accent: #7db2f0;
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --hover: #1c2739;
+    --line: #283548;
+    --line-strong: #3a4a60;
+
+    --ink: #f1f4f9;
+    --ink-2: #cbd3df;
+    --muted: #94a3b8;
+
+    --primary: #e8a317;
+    --primary-hover: #f0b23a;
+    --primary-fg: #14181f;
+
+    --ok: #5fd39a;   --ok-bg: rgba(95, 211, 154, 0.12);  --ok-line: rgba(95, 211, 154, 0.35);
+    --err: #ff8a80;  --err-bg: rgba(255, 138, 128, 0.12); --err-line: rgba(255, 138, 128, 0.35);
+    --warn: #f3b657; --warn-bg: rgba(243, 182, 87, 0.12); --warn-line: rgba(243, 182, 87, 0.35);
+    --info: #7db2f0; --info-bg: rgba(125, 178, 240, 0.12); --info-line: rgba(125, 178, 240, 0.35);
+    --ring: rgba(125, 178, 240, 0.3);
+}
+
+@media (max-width: 640px) {
+    :root { --ctl-h: 44px; }
+}
+
+/* --------------------------------------------------------------------------
+   2. BASE Y CONTENEDORES
+   -------------------------------------------------------------------------- */
+html body :is(.adm-view-container, .cnt-view-container, .op-view-container) {
+    font-family: var(--font) !important;
+    font-size: 14px;
+    color: var(--ink) !important;
+    background-color: var(--bg) !important;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    width: 100% !important;
+    max-width: 1600px !important;
+    margin: 0 auto !important;
+    padding: 24px 32px 64px !important;
+    box-sizing: border-box !important;
+}
+
+@media (max-width: 640px) {
+    html body :is(.adm-view-container, .cnt-view-container, .op-view-container) {
+        padding: 12px 10px 32px !important;
+    }
+}
+
+/* Los estilos en línea del Admin usaban peso 800/900: se bajan a 600 */
+html body :is(.adm-view-container, .cnt-view-container, .op-view-container) [style*="font-weight: 900"],
+html body :is(.adm-view-container, .cnt-view-container, .op-view-container) [style*="font-weight: 800"],
+html body :is(.adm-view-container, .cnt-view-container, .op-view-container) [style*="font-weight: 700"] {
+    font-weight: 600 !important;
+}
+html body :is(.adm-view-container, .cnt-view-container, .op-view-container) [style*="text-transform: uppercase"] {
+    text-transform: none !important;
+}
+
+/* Foco visible en teclado */
+html body :is(.adm-view-container, .cnt-view-container, .op-view-container, .login-container) :is(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html body :is(.adm-view-container, .cnt-view-container, .op-view-container, .login-container) * {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   3. ENCABEZADO DE PÁGINA (azul marino, igual en las tres vistas)
+   -------------------------------------------------------------------------- */
+html body :is(.adm-top-header, .cnt-top-header, .op-top-banner) {
+    background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%) !important;
+    border: none !important;
+    border-radius: var(--r-lg) !important;
+    box-shadow: var(--shadow) !important;
+    padding: 18px 26px !important;
+    align-items: center;
+}
+html body .adm-top-header { margin-bottom: 20px; }
+
+html body :is(.cnt-header-tag, .op-pill-tag) {
+    font-size: 12px;
+    font-weight: 500;
+    color: #f5b73c !important;
+    text-transform: none;
+    letter-spacing: 0;
+    margin: 0 0 2px;
+}
+html body :is(.adm-page-title, .cnt-header-title, .op-main-title) {
+    font-size: 20px !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+    letter-spacing: -0.01em !important;
+    margin: 0;
+}
+html body :is(.adm-page-desc, .op-main-desc) {
+    font-size: 13px;
+    font-weight: 400;
+    color: #b6c4d8 !important;
+    margin: 4px 0 0;
+}
+html body .adm-top-header .adm-period-label { color: #b6c4d8 !important; }
+
+html body .op-date-box {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: var(--r);
+    padding: 8px 14px;
+}
+html body .op-date-label { font-size: 12px; font-weight: 500; color: #9fb3cc; text-transform: none; letter-spacing: 0; }
+html body .op-date-val { font-family: var(--font); font-size: 14px; font-weight: 600; color: #ffffff; }
+
+/* --------------------------------------------------------------------------
+   4. NAVEGACIÓN POR PESTAÑAS (subrayado, no píldoras)
+   -------------------------------------------------------------------------- */
+html body :is(.adm-nav-group, .cnt-nav-group) {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--line) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    gap: 4px !important;
+    margin: 0 0 20px !important;
+}
+
+html body :is(.adm-nav-btn, .cnt-nav-btn) {
+    background: transparent !important;
+    color: var(--muted) !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 10px 14px !important;
+    margin-bottom: -1px;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+html body :is(.adm-nav-btn, .cnt-nav-btn):hover {
+    color: var(--ink) !important;
+    background: transparent !important;
+}
+html body :is(.adm-nav-btn, .cnt-nav-btn).active {
+    color: var(--ink) !important;
+    font-weight: 600 !important;
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+    background: transparent !important;
+}
+
+html body :is(.adm-nav-badge, .cnt-nav-badge) {
+    background-color: var(--bg) !important;
+    color: var(--muted) !important;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+}
+html body :is(.adm-nav-btn, .cnt-nav-btn).active :is(.adm-nav-badge, .cnt-nav-badge) {
+    background-color: var(--accent) !important;
+    color: #ffffff !important;
+}
+
+/* --------------------------------------------------------------------------
+   5. TARJETAS KPI (planas, sin degradados ni elevación)
+   -------------------------------------------------------------------------- */
+html body :is(.adm-kpi-card, .cnt-kpi-card) {
+    background: var(--surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-lg) !important;
+    box-shadow: var(--shadow) !important;
+    padding: 16px 18px !important;
+    transform: none !important;
+    transition: border-color 0.12s ease !important;
+}
+html body :is(.adm-kpi-card, .cnt-kpi-card):hover {
+    transform: none !important;
+    box-shadow: var(--shadow) !important;
+    border-color: var(--line-strong) !important;
+}
+
+/* La tarjeta principal se distingue con una marca superior, no con fondo oscuro */
+html body :is(.adm-kpi-card.highlight, .cnt-kpi-card.ingresos) {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%) !important;
+    color: #ffffff !important;
+    border-color: var(--navy) !important;
+    box-shadow: var(--shadow), inset 0 3px 0 var(--brand) !important;
+}
+html body :is(.adm-kpi-card.highlight .adm-kpi-sub, .cnt-kpi-card.ingresos .cnt-kpi-sub) { color: #b6c4d8 !important; }
+html body :is(.adm-kpi-card.highlight .adm-kpi-value, .cnt-kpi-card.ingresos .cnt-kpi-value) { color: #ffffff !important; }
+html body :is(.adm-kpi-card.highlight .adm-kpi-foot, .cnt-kpi-card.ingresos .cnt-kpi-foot) { color: #9fb3cc !important; }
+
+html body .adm-kpi-card.alert-card {
+    background: var(--surface) !important;
+    border-color: var(--err-line) !important;
+}
+html body .adm-kpi-card.alert-card .adm-kpi-value { color: var(--err) !important; }
+
+html body :is(.adm-kpi-sub, .cnt-kpi-sub) {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: var(--muted) !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+html body :is(.adm-kpi-value, .cnt-kpi-value) {
+    font-family: var(--font) !important;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 6px 0 4px;
+}
+html body :is(.adm-kpi-foot, .cnt-kpi-foot) {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    color: var(--muted) !important;
+}
+
+/* --------------------------------------------------------------------------
+   6. PANELES / TARJETAS DE CONTENIDO
+   -------------------------------------------------------------------------- */
+html body :is(.adm-card, .adm-profit-card, .adm-form-box, .cnt-panel-box, .cnt-form-card, .op-card, .op-side-card) {
+    background: var(--surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-lg) !important;
+    box-shadow: var(--shadow) !important;
+    padding: 20px;
+}
+
+html body :is(.adm-card-title, .adm-profit-title-box h3, .cnt-panel-title, .cnt-form-title, .op-side-title, .op-sub-title, .adm-action-bar h2, .adm-modal-title-group h3, .cnt-modal-title) {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: var(--ink) !important;
+    letter-spacing: -0.005em !important;
+    text-transform: none;
+}
+html body :is(.adm-card-sub, .adm-profit-title-box p, .cnt-panel-sub, .adm-modal-title-group p, .cnt-modal-sub, .op-sub-txt) {
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    color: var(--muted) !important;
+}
+html body :is(.op-side-tag, .op-sub-badge) {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted) !important;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+html body :is(.op-supervisor-card, .op-history-card, .op-fuel-wrapper, .op-declaracion-box, .op-upload-box, .op-canvas-frame) {
+    background-color: var(--surface-2) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r) !important;
+}
+html body :is(.op-upload-box, .op-canvas-frame) { border-style: dashed !important; border-color: var(--line-strong) !important; }
+
+html body .op-summary-box {
+    background-color: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+}
+html body .op-summary-label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; }
+html body .op-summary-num { font-family: var(--font); font-size: 22px; font-weight: 600; color: var(--ink); }
+
+/* --------------------------------------------------------------------------
+   7. TABLAS
+   -------------------------------------------------------------------------- */
+html body :is(.adm-table-wrap, .cnt-table-wrap) {
+    background: var(--surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-lg) !important;
+    box-shadow: var(--shadow) !important;
+    overflow-x: auto;
+}
+
+html body :is(.adm-table, .cnt-table) {
+    background: transparent !important;
+    font-size: 13px;
+}
+
+html body :is(.adm-table, .cnt-table) th {
+    background-color: var(--th-bg) !important;
+    color: var(--th-fg) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    padding: 10px 14px !important;
+    border-bottom: none !important;
+    white-space: nowrap;
+}
+
+html body :is(.adm-table, .cnt-table) td {
+    background-color: transparent !important;
+    color: var(--ink) !important;
+    padding: 10px 14px !important;
+    border-bottom: 1px solid var(--line) !important;
+    vertical-align: middle;
+}
+html body :is(.adm-table, .cnt-table) tbody tr:last-child td { border-bottom: none !important; }
+html body :is(.adm-table, .cnt-table) tbody tr:hover td { background-color: var(--hover) !important; }
+html body :is(.adm-table, .cnt-table) td strong { text-transform: none !important; font-weight: 600; }
+
+html body .cnt-no-data { color: var(--muted); font-size: 13px; padding: 32px 16px; text-align: center; }
+
+/* --------------------------------------------------------------------------
+   8. ETIQUETAS, ESTADOS E IDENTIFICADORES
+   -------------------------------------------------------------------------- */
+/* Etiquetas neutras */
+html body :is(.adm-tag, .adm-tag-muted, .adm-tag-amber, .cnt-sector-tag, .adm-fleet-badge) {
+    background-color: var(--bg) !important;
+    color: var(--ink-2) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-sm) !important;
+    padding: 2px 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Patentes / códigos: monoespaciada solo donde ayuda a leer */
+html body :is(.adm-fleet-badge, .adm-code-tag, .cnt-id-code, .id-contrato-code, .op-history-patente) {
+    font-family: var(--mono) !important;
+    font-size: 12px !important;
+    letter-spacing: 0.02em;
+}
+html body .adm-code-tag { background: transparent; border: none; color: var(--muted); padding: 0; font-weight: 500; }
+html body :is(.id-contrato-code, .cnt-id-code) { color: var(--muted); font-weight: 400; }
+
+html body :is(.contrato-nombre-texto, .cnt-nombre-texto) {
+    text-transform: none !important;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+html body .tarifa-chip-corp {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--ok);
+    font-family: var(--font);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+/* Estados: punto de color + texto en minúscula (el color lleva el significado) */
+html body :is(.adm-badge-green, .adm-badge-amber, .adm-badge-red, .cnt-badge-hes, .cnt-badge-concepto, .op-history-badge) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--r-sm) !important;
+    padding: 2px 8px !important;
+    font-family: var(--font);
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    white-space: nowrap;
+}
+html body :is(.adm-badge-green, .adm-badge-amber, .adm-badge-red, .cnt-badge-hes)::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+}
+
+html body :is(.adm-badge-green, .cnt-badge-hes.aprobada, .op-history-badge) {
+    background-color: var(--ok-bg) !important; color: var(--ok) !important; border: 1px solid var(--ok-line) !important;
+}
+html body :is(.adm-badge-amber, .cnt-badge-hes.pendiente) {
+    background-color: var(--warn-bg) !important; color: var(--warn) !important; border: 1px solid var(--warn-line) !important;
+}
+html body :is(.adm-badge-red) {
+    background-color: var(--err-bg) !important; color: var(--err) !important; border: 1px solid var(--err-line) !important;
+}
+html body .cnt-badge-hes.prorrogado {
+    background-color: var(--info-bg) !important; color: var(--info) !important; border: 1px solid var(--info-line) !important;
+}
+html body .cnt-badge-concepto {
+    background-color: var(--bg) !important; color: var(--ink-2) !important; border: 1px solid var(--line) !important;
+}
+html body .op-history-fuel { color: var(--warn); font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   9. ALERTAS
+   -------------------------------------------------------------------------- */
+html body :is(.adm-alert-ok, .adm-alert-fail, .cnt-alert-banner, .op-alert-ok, .op-alert-fail, .login-error-alert) {
+    border-radius: var(--r) !important;
+    box-shadow: none !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 10px 14px !important;
+    border-left-width: 3px !important;
+}
+html body :is(.adm-alert-ok, .cnt-alert-banner.success, .op-alert-ok) {
+    background-color: var(--ok-bg) !important; color: var(--ok) !important; border-color: var(--ok-line) !important; border-left-color: var(--ok) !important;
+}
+html body :is(.adm-alert-fail, .cnt-alert-banner.error, .op-alert-fail, .login-error-alert) {
+    background-color: var(--err-bg) !important; color: var(--err) !important; border-color: var(--err-line) !important; border-left-color: var(--err) !important;
+}
+
+/* --------------------------------------------------------------------------
+   10. FORMULARIOS
+   -------------------------------------------------------------------------- */
+html body :is(.adm-field label, .cnt-input-group label, .op-label, .adm-period-label, .cnt-section-label, .form-group-label) {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: var(--ink-2) !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+
+html body :is(
+    .adm-field input, .adm-field select, .adm-select-period, .adm-search-input,
+    .cnt-input-group input, .cnt-input-group select, .cnt-search-input, .cnt-select-filter,
+    .cnt-machine-row select, .cnt-machine-row input, .adm-field + .adm-field input,
+    .op-input
+) {
+    height: var(--ctl-h) !important;
+    background-color: var(--surface) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--line-strong) !important;
+    border-radius: var(--r) !important;
+    box-shadow: none !important;
+    padding: 0 12px;
+    font-family: var(--font);
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+html body :is(
+    .adm-field input, .adm-field select, .adm-select-period, .adm-search-input,
+    .cnt-input-group input, .cnt-input-group select, .cnt-search-input, .cnt-select-filter,
+    .op-input
+):focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--ring) !important;
+    outline: none;
+}
+html body .op-input-readonly {
+    background-color: var(--surface-2) !important;
+    color: var(--muted) !important;
+    font-family: var(--font);
+    font-weight: 500 !important;
+}
+html body .op-input-error { border-color: var(--err) !important; background-color: var(--err-bg) !important; }
+html body .op-field-error { font-size: 12px; font-weight: 500; color: var(--err); }
+
+html body :is(.adm-form-actions) { border-top: 1px solid var(--line); }
+
+/* --------------------------------------------------------------------------
+   11. BOTONES
+   -------------------------------------------------------------------------- */
+/* Primario: una sola jerarquía para toda la app */
+html body :is(.adm-btn-primary, .adm-btn-submit, .cnt-btn-action.primary, .cnt-btn-action.dark, .op-btn-submit, .btn-login-submit) {
+    height: var(--ctl-h) !important;
+    background-color: var(--primary) !important;
+    color: var(--primary-fg) !important;
+    border: 1px solid var(--primary) !important;
+    border-radius: var(--r) !important;
+    box-shadow: none !important;
+    padding: 0 16px;
+    font-family: var(--font);
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    transform: none !important;
+    transition: background-color 0.12s ease !important;
+}
+html body :is(.adm-btn-primary, .adm-btn-submit, .cnt-btn-action.primary, .cnt-btn-action.dark, .op-btn-submit, .btn-login-submit):hover {
+    background-color: var(--primary-hover) !important;
+    border-color: var(--primary-hover) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+html body .op-btn-submit { height: 40px !important; }
+
+/* Secundario */
+html body :is(.adm-btn-secondary, .adm-btn-refresh, .cnt-btn-sync, .cnt-btn-action:not(.primary):not(.dark), .cnt-btn-night) {
+    height: var(--ctl-h) !important;
+    background-color: var(--surface) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--line-strong) !important;
+    border-radius: var(--r) !important;
+    box-shadow: none !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    transform: none !important;
+}
+html body :is(.adm-btn-secondary, .adm-btn-refresh, .cnt-btn-sync, .cnt-btn-action:not(.primary):not(.dark), .cnt-btn-night):hover {
+    background-color: var(--hover) !important;
+    border-color: var(--muted) !important;
+    transform: none !important;
+}
+
+/* Acciones dentro de filas */
+html body :is(.adm-action-btn, .adm-btn-file-view, .cnt-btn-row-act, .cnt-btn-s3) {
+    background-color: var(--surface) !important;
+    color: var(--ink-2) !important;
+    border: 1px solid var(--line-strong) !important;
+    border-radius: var(--r-sm) !important;
+    box-shadow: none !important;
+    padding: 3px 10px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+}
+html body :is(.adm-action-btn.edit, .adm-btn-file-view, .cnt-btn-row-act, .cnt-btn-s3):hover {
+    background-color: var(--hover) !important;
+    color: var(--ink) !important;
+    border-color: var(--muted) !important;
+}
+html body .adm-action-btn.delete { color: var(--err) !important; border-color: var(--err-line) !important; }
+html body .adm-action-btn.delete:hover { background-color: var(--err-bg) !important; color: var(--err) !important; border-color: var(--err) !important; }
+html body .adm-btn-file-view.s3-ready { color: var(--ok) !important; border-color: var(--ok-line) !important; background-color: var(--ok-bg) !important; }
+
+html body button.cnt-btn-delete-small {
+    background-color: var(--surface) !important;
+    color: var(--err) !important;
+    border: 1px solid var(--err-line) !important;
+    height: var(--ctl-h) !important;
+    width: var(--ctl-h) !important;
+    min-width: var(--ctl-h) !important;
+    max-width: var(--ctl-h) !important;
+    flex: 0 0 var(--ctl-h) !important;
+}
+html body button.cnt-btn-delete-small:hover { background-color: var(--err-bg) !important; border-color: var(--err) !important; }
+
+/* Pestañas de firma (Operador) */
+html body .op-signature-tabs { background-color: var(--bg); border-radius: var(--r); }
+html body .op-tab-btn { font-weight: 500; border-radius: var(--r-sm); }
+html body .op-tab-btn.active { background-color: var(--surface) !important; color: var(--ink) !important; box-shadow: 0 0 0 1px var(--line-strong) !important; font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   12. MODALES
+   -------------------------------------------------------------------------- */
+html body :is(.adm-modal-overlay, .cnt-modal-overlay) {
+    background-color: rgba(10, 14, 20, 0.6) !important;
+    backdrop-filter: none !important;
+}
+html body :is(.adm-modal-content, .cnt-modal-card) {
+    background: var(--surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--r-lg) !important;
+    box-shadow: 0 12px 32px rgba(10, 14, 20, 0.28) !important;
+}
+html body :is(.adm-modal-header, .cnt-modal-head) {
+    background: var(--surface-2) !important;
+    border-bottom: 1px solid var(--line) !important;
+}
+html body :is(.adm-modal-body, .cnt-modal-body) { background: var(--bg) !important; }
+html body .adm-modal-footer { background: var(--surface) !important; border-top: 1px solid var(--line); color: var(--muted); }
+
+/* --------------------------------------------------------------------------
+   13. INICIO DE SESIÓN
+   Se mantiene la foto de faena a la izquierda; el formulario pasa a un
+   panel claro, que es lo habitual en sistemas de gestión.
+   -------------------------------------------------------------------------- */
+html body .login-container { font-family: var(--font); background-color: #eef3f9; }
+
+html body .login-hero { background-color: #0d1219; border-right: none; padding: 48px 56px; }
+html body .login-hero::before {
+    background: linear-gradient(180deg, rgba(13, 18, 25, 0.78) 0%, rgba(13, 18, 25, 0.5) 45%, rgba(13, 18, 25, 0.88) 100%);
+}
+html body .login-hero-bg { opacity: 0.6; }
+
+html body .login-brand-logo {
+    width: 36px; height: 36px; border-radius: var(--r);
+    font-size: 18px; font-weight: 600; box-shadow: none;
+    background-color: #e8a317; color: #14181f;
+}
+html body .login-brand-title { font-size: 18px; font-weight: 600; letter-spacing: 0; }
+html body .login-brand-title span { color: #ffffff; font-weight: 400; }
+html body .login-brand-subtitle { font-size: 12px; font-weight: 400; color: #aab4c3; }
+
+html body .login-hero-content { max-width: 480px; }
+html body .login-hero-title { font-size: 30px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; }
+html body .login-hero-desc { font-size: 14px; font-weight: 400; color: #d3d9e2; line-height: 1.6; }
+html body .login-hero-footer { border-top-color: rgba(255, 255, 255, 0.18); }
+html body .footer-muted, html body .footer-tech { font-size: 12px; font-weight: 400; color: #aab4c3; }
+html body .footer-tech { font-family: var(--font); }
+
+html body .login-panel { background-color: #ffffff; width: 480px; box-shadow: -8px 0 24px rgba(15, 42, 74, 0.12); position: relative; z-index: 3; }
+html body .login-box-title { font-size: 22px; font-weight: 600; color: #14181f; letter-spacing: -0.015em; }
+html body .login-box-desc { font-size: 13px; color: #667085; }
+
+html body .login-container .form-group-label { color: #3b4452 !important; }
+html body .login-input {
+    height: 40px;
+    background-color: #ffffff;
+    color: #14181f;
+    border: 1px solid #c6ccd5;
+    border-radius: var(--r);
+    font-size: 14px;
+}
+html body .login-input:focus { border-color: #0b6bcb; box-shadow: 0 0 0 3px rgba(11, 107, 203, 0.22); }
+html body .login-input-rut { font-family: var(--mono); font-weight: 500; letter-spacing: 0.02em; }
+html body .btn-toggle-pass { color: #0b6bcb; font-weight: 500; }
+html body .login-container .btn-login-submit { height: 42px !important; margin-top: 4px; background-color: #0b5cab !important; border-color: #0b5cab !important; color: #ffffff !important; }
+html body .login-container .btn-login-submit:hover { background-color: #094a8a !important; }
+html body .login-container .btn-login-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 900px) {
+    html body .login-panel { width: 100%; }
+    html body .login-input { height: 46px; font-size: 16px; }
+    html body .login-container .btn-login-submit { height: 48px !important; }
+}
+
+/* --------------------------------------------------------------------------
+   14. MÁS ESTRUCTURA Y COLOR
+   -------------------------------------------------------------------------- */
+
+/* Filas con cebra suave (después se reaplica el hover para que gane) */
+html body :is(.adm-table, .cnt-table) tbody tr:nth-child(even) td { background-color: var(--surface-2) !important; }
+html body :is(.adm-table, .cnt-table) tbody tr:hover td { background-color: var(--hover) !important; }
+
+/* KPI: franja de color superior según significado */
+html body .cnt-kpi-card.gastos,
+html body .cnt-kpi-card.margen-neg,
+html body .adm-kpi-card:has(.adm-kpi-value[style*="dc2626"]) { border-top: 3px solid #d64545 !important; }
+html body .cnt-kpi-card.margen-pos,
+html body .adm-kpi-card:has(.adm-kpi-value[style*="0284c7"]) { border-top: 3px solid var(--accent) !important; }
+html body .adm-kpi-card:has(.adm-kpi-value[style*="16a34a"]) { border-top: 3px solid #1f9d63 !important; }
+html body .cnt-kpi-card.combustible { border-top: 3px solid #e09a1a !important; }
+html body .cnt-kpi-card.mantenimiento { border-top: 3px solid #5b5bd6 !important; }
+html body .adm-kpi-card.alert-card { border-top: 3px solid #d64545 !important; }
+
+/* Títulos de panel con marca azul a la izquierda */
+html body :is(.adm-card-title, .cnt-panel-title, .cnt-form-title) {
+    padding-left: 10px;
+    border-left: 3px solid var(--accent);
+    line-height: 1.2;
+}
+
+/* BARRA LATERAL (solo escritorio): las pestañas pasan a menú vertical */
+@media (min-width: 1025px) {
+    html body :is(.adm-view-container, .cnt-view-container) {
+        max-width: none !important;
+        margin: 0 !important;
+        padding-left: 268px !important;
+        padding-right: 32px !important;
+    }
+
+    html body :is(.adm-nav-group, .cnt-nav-group) {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: 232px;
+        z-index: 50;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 2px !important;
+        padding: 80px 12px 16px !important;
+        margin: 0 !important;
+        overflow-x: hidden;
+        overflow-y: auto;
+        background: linear-gradient(180deg, var(--navy) 0%, #0a1c33 100%) !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: 2px 0 14px rgba(10, 28, 51, 0.25) !important;
+    }
+    /* Marca arriba de la barra */
+    html body :is(.adm-nav-group, .cnt-nav-group)::before {
+        content: "MULTIMAK 360";
+        position: absolute;
+        top: 26px; left: 58px;
+        font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
+        color: #ffffff;
+    }
+    html body :is(.adm-nav-group, .cnt-nav-group)::after {
+        content: "M";
+        position: absolute;
+        top: 20px; left: 16px;
+        width: 30px; height: 30px;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--brand); color: #14181f;
+        border-radius: var(--r);
+        font-size: 16px; font-weight: 700;
+    }
+
+    html body :is(.adm-nav-btn, .cnt-nav-btn) {
+        width: 100%;
+        justify-content: space-between;
+        text-align: left;
+        color: #b6c4d8 !important;
+        border-bottom: none !important;
+        border-radius: var(--r) !important;
+        margin: 0 !important;
+        padding: 10px 14px !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn):hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn).active {
+        background: rgba(255, 255, 255, 0.13) !important;
+        color: #ffffff !important;
+        box-shadow: inset 3px 0 0 var(--brand) !important;
+        border-bottom: none !important;
+    }
+    html body :is(.adm-nav-group, .cnt-nav-group) :is(.adm-nav-badge, .cnt-nav-badge) {
+        background-color: rgba(255, 255, 255, 0.14) !important;
+        color: #dbe5f3 !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn).active :is(.adm-nav-badge, .cnt-nav-badge) {
+        background-color: var(--brand) !important;
+        color: #14181f !important;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   15. AJUSTE DEL MENÚ LATERAL: textos largos y ancho
+   -------------------------------------------------------------------------- */
+@media (min-width: 1025px) {
+    html body :is(.adm-view-container, .cnt-view-container) {
+        padding-left: 292px !important;
+    }
+    html body :is(.adm-nav-group, .cnt-nav-group) {
+        width: 256px;
+        padding: 84px 12px 16px !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn) {
+        flex: none;
+        min-height: 40px;
+        gap: 10px !important;
+        align-items: center !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere;
+        line-height: 1.3;
+        font-size: 13px !important;
+        text-align: left;
+    }
+    html body :is(.adm-nav-group, .cnt-nav-group) :is(.adm-nav-badge, .cnt-nav-badge) {
+        flex: none;
+        margin-left: auto;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   16. MENÚ LATERAL: alineación a la izquierda en todas las opciones
+   El CSS original centraba con !important; también se trata como "pastilla"
+   cualquier número suelto dentro del botón, aunque no tenga la clase.
+   -------------------------------------------------------------------------- */
+@media (min-width: 1025px) {
+    html body :is(.adm-nav-btn, .cnt-nav-btn) {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn) > span:not(.adm-nav-badge):not(.cnt-nav-badge) {
+        flex: none;
+        margin-left: auto;
+        background-color: rgba(255, 255, 255, 0.14);
+        color: #dbe5f3;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 1px 8px;
+        border-radius: 10px;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn).active > span:not(.adm-nav-badge):not(.cnt-nav-badge) {
+        background-color: var(--brand);
+        color: #14181f;
+    }
+}
