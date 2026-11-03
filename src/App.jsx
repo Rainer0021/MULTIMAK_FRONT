@@ -43,11 +43,17 @@ export default function App() {
     setModoNoche(prev => !prev);
   };
 
-  const iniciarSesion = (datos) => {
-    // datos puede ser { token: '...', usuario: { ... } } o directamente el usuario con el token dentro
-    const infoUsuario = datos?.usuario ? { ...datos.usuario, token: datos.token } : datos;
+  const iniciarSesion = async (datos) => {
+    const infoUsuario = datos?.usuario ? datos.usuario : datos;
     setUsuario(infoUsuario);
     localStorage.setItem('usuario_multimak', JSON.stringify(infoUsuario));
+
+    // Forzar a Django a establecer la cookie CSRF y de sesión en el navegador
+    try {
+      await axios.get('obtener-csrf/'); 
+    } catch (e) {
+      console.error('Error al inicializar cookies de seguridad', e);
+    }
   };
 
   const cerrarSesion = () => {
