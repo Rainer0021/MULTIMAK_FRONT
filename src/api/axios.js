@@ -9,6 +9,7 @@ const baseURL = import.meta.env.VITE_API_URL
 
 const api = axios.create({
   baseURL,
+  withCredentials: true, // <--- ¡ESTO ES LO QUE FALTABA! Permite enviar cookies de sesión a Django
 });
 
 // Interceptor para permitir multipart/form-data automático al enviar FormData
