@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-// Detecta si estás en tu PC (localhost) o en el servidor desplegado (DuckDNS)
 const baseURL = import.meta.env.VITE_API_URL 
   ? import.meta.env.VITE_API_URL 
   : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -9,16 +8,29 @@ const baseURL = import.meta.env.VITE_API_URL
 
 const api = axios.create({
   baseURL,
-  withCredentials: true, // <--- ¡ESTO ES LO QUE FALTABA! Permite enviar cookies de sesión a Django
+  withCredentials: true, // Permite enviar cookies de sesión
 });
 
-// Interceptor para permitir multipart/form-data automático al enviar FormData
+// Interceptor para inyectar token de autorización y gestionar FormData
 api.interceptors.request.use((config) => {
+  // Intentar rescatar el token de autenticación si se guarda en localStorage
+  try {
+    const sesion = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
+    const token = sesion.token || sesion.access || localStorage.getItem('token');
+    
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`; // O `Token ${token}` según tu backend
+    }
+  } catch (e) {
+    console.error('Error leyendo token de sesión', e);
+  }
+
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type'];
   } else if (!config.headers['Content-Type']) {
     config.headers['Content-Type'] = 'application/json';
   }
+  
   return config;
 });
 
