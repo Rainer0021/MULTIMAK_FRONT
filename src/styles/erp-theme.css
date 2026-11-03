@@ -365,7 +365,7 @@ html body :is(.adm-table, .cnt-table) td {
 }
 html body :is(.adm-table, .cnt-table) tbody tr:last-child td { border-bottom: none !important; }
 html body :is(.adm-table, .cnt-table) tbody tr:hover td { background-color: var(--hover) !important; }
-html body :is(.adm-table, .cnt-table) td strong { text-transform: none !important; font-weight: 600; }
+html body :is(.adm-table, .cnt-table) td strong { text-transform: none !important; font-weight: 600; color: var(--ink) !important; }
 
 html body .cnt-no-data { color: var(--muted); font-size: 13px; padding: 32px 16px; text-align: center; }
 
@@ -830,5 +830,11 @@ html body :is(.adm-card-title, .cnt-panel-title, .cnt-form-title) {
     html body :is(.adm-nav-btn, .cnt-nav-btn).active > span:not(.adm-nav-badge):not(.cnt-nav-badge) {
         background-color: var(--brand);
         color: #14181f;
+    }
+    html body :is(.adm-nav-group, .cnt-nav-group) {
+        z-index: 60;
+    }
+    html body:has(.adm-nav-group, .cnt-nav-group) header > div:first-child {
+        visibility: hidden;
     }
 }
