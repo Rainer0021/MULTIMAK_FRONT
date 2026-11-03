@@ -400,15 +400,18 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         setCargando(true);
         setError('');
         try {
-            const [resCli, resMaq, resOp, resRep, resGas, resCont, resDocs] = await Promise.all([
+            const [resCli, resMaq, resOp, resRep, resGas, resCont, resDocs, resKpis] = await Promise.all([
                 axios.get('clientes/').catch(() => axios.get('/clientes/')).catch(() => ({ data: [] })),
                 axios.get('maquinarias/').catch(() => axios.get('/maquinarias/')).catch(() => ({ data: [] })),
                 axios.get('operadores/').catch(() => axios.get('/operadores/')).catch(() => ({ data: [] })),
                 axios.get('reports/').catch(() => axios.get('/reports/')).catch(() => ({ data: [] })),
                 axios.get('gastos/').catch(() => axios.get('/gastos/')).catch(() => ({ data: [] })),
                 axios.get('/contratos/').catch(() => axios.get('contratos/')).catch(() => ({ data: [] })),
-                axios.get('doc-maquinaria/').catch(() => axios.get('/doc-maquinaria/')).catch(() => ({ data: [] }))
+                axios.get('doc-maquinaria/').catch(() => axios.get('/doc-maquinaria/')).catch(() => ({ data: [] })),
+                axios.get('resumen-kpis/').catch(() => axios.get('/resumen-kpis/')).catch(() => ({ data: {} })) // <--- AGREGAR ESTE ENDPOINT
             ]);
+
+            // ...resto del código
 
             setDocumentosMaq(resDocs.data?.results || (Array.isArray(resDocs.data) ? resDocs.data : []));
             setClientes(resCli.data?.results || (Array.isArray(resCli.data) ? resCli.data : []));
@@ -1443,91 +1446,91 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     <div className="adm-grid-2" style={{ marginBottom: '24px', alignItems: 'stretch', ...(gastosPorCategoria.length === 0 ? { gridTemplateColumns: '1fr' } : {}) }}>
                         {/* COLUMNA 1: GASTOS (solo si hay gastos en el período) */}
                         {gastosPorCategoria.length > 0 && (
-                        <div className="adm-profit-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                            <div>
-                                <div className="adm-profit-header">
-                                    <div className="adm-profit-title-box">
-                                        <h3>Distribución de costos</h3>
-                                        <p>Principales categorías de egreso en el período.</p>
+                            <div className="adm-profit-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div>
+                                    <div className="adm-profit-header">
+                                        <div className="adm-profit-title-box">
+                                            <h3>Distribución de costos</h3>
+                                            <p>Principales categorías de egreso en el período.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTabActiva('gastos')}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: '#0284c7',
+                                                fontWeight: '700',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            Ver detalle →
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTabActiva('gastos')}
-                                        style={{
-                                            background: 'none',
-                                            border: 'none',
-                                            color: '#0284c7',
-                                            fontWeight: '700',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '4px'
-                                        }}
-                                    >
-                                        Ver detalle →
-                                    </button>
-                                </div>
 
-                                {gastosPorCategoria.length === 0 ? (
-                                    /* ESTADO NEUTRO (EMPTY STATE) PROFESIONAL */
-                                    <div style={{
-                                        padding: '32px 16px',
-                                        textAlign: 'center',
-                                        color: '#64748b',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '8px'
-                                    }}>
+                                    {gastosPorCategoria.length === 0 ? (
+                                        /* ESTADO NEUTRO (EMPTY STATE) PROFESIONAL */
                                         <div style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '50%',
-                                            backgroundColor: modoNoche ? '#1e293b' : '#f1f5f9',
+                                            padding: '32px 16px',
+                                            textAlign: 'center',
+                                            color: '#64748b',
                                             display: 'flex',
+                                            flexDirection: 'column',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            fontSize: '18px',
-                                            marginBottom: '4px'
+                                            gap: '8px'
                                         }}>
-                                            💳
+                                            <div style={{
+                                                width: '40px',
+                                                height: '40px',
+                                                borderRadius: '50%',
+                                                backgroundColor: modoNoche ? '#1e293b' : '#f1f5f9',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '18px',
+                                                marginBottom: '4px'
+                                            }}>
+                                                💳
+                                            </div>
+                                            <strong style={{ fontSize: '13px', color: modoNoche ? '#f8fafc' : '#0f172a' }}>
+                                                Sin egresos en este período
+                                            </strong>
+                                            <span style={{ fontSize: '12px', maxWidth: '280px', lineHeight: '1.4' }}>
+                                                No se registran gastos de combustible ni taller asignados durante el mes seleccionado.
+                                            </span>
                                         </div>
-                                        <strong style={{ fontSize: '13px', color: modoNoche ? '#f8fafc' : '#0f172a' }}>
-                                            Sin egresos en este período
-                                        </strong>
-                                        <span style={{ fontSize: '12px', maxWidth: '280px', lineHeight: '1.4' }}>
-                                            No se registran gastos de combustible ni taller asignados durante el mes seleccionado.
-                                        </span>
-                                    </div>
-                                ) : (
-                                    /* BARRAS DE PROGRESO DE DISTRIBUCIÓN */
-                                    <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                        {gastosPorCategoria.slice(0, 3).map(([cat, monto]) => {
-                                            const pct = totalGastos > 0 ? Math.round((monto / totalGastos) * 100) : 0;
-                                            return (
-                                                <div key={cat}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '700' }}>
-                                                        <span>{cat}</span>
-                                                        <span>{formatoCLP(monto)} · {pct}%</span>
+                                    ) : (
+                                        /* BARRAS DE PROGRESO DE DISTRIBUCIÓN */
+                                        <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                            {gastosPorCategoria.slice(0, 3).map(([cat, monto]) => {
+                                                const pct = totalGastos > 0 ? Math.round((monto / totalGastos) * 100) : 0;
+                                                return (
+                                                    <div key={cat}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '700' }}>
+                                                            <span>{cat}</span>
+                                                            <span>{formatoCLP(monto)} · {pct}%</span>
+                                                        </div>
+                                                        <div style={{ height: '8px', borderRadius: '4px', background: modoNoche ? '#1e293b' : '#e2e8f0', marginTop: '6px' }}>
+                                                            <div style={{ width: `${pct}%`, height: '100%', borderRadius: '4px', background: '#dc2626' }} />
+                                                        </div>
                                                     </div>
-                                                    <div style={{ height: '8px', borderRadius: '4px', background: modoNoche ? '#1e293b' : '#e2e8f0', marginTop: '6px' }}>
-                                                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: '4px', background: '#dc2626' }} />
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {gastosPorCategoria.length > 3 && (
+                                    <div style={{ padding: '0 16px 12px', fontSize: '12px', color: '#64748b' }}>
+                                        + {gastosPorCategoria.length - 3} categoría(s) más registradas.
                                     </div>
                                 )}
                             </div>
-
-                            {gastosPorCategoria.length > 3 && (
-                                <div style={{ padding: '0 16px 12px', fontSize: '12px', color: '#64748b' }}>
-                                    + {gastosPorCategoria.length - 3} categoría(s) más registradas.
-                                </div>
-                            )}
-                        </div>
                         )}
 
                         {/* COLUMNA 2: INGRESOS POR CONTRATO */}
