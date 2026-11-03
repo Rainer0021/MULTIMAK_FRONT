@@ -1299,7 +1299,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     <div className="adm-action-bar" style={{ marginBottom: '20px' }}>
                         <div>
                             <span className="adm-kpi-sub" style={{ color: '#0284c7', fontWeight: '800' }}></span>
-                            <h2 style={{ margin: '2px 0 0', fontSize: '20px', fontWeight: '900', color: '#0f172a' }}>Resumen operativo</h2>
+                            <h2 style={{ margin: '2px 0 0', fontSize: '20px', fontWeight: '900', color: 'var(--ink)' }}>Resumen operativo</h2>
                         </div>
                         <div className="adm-action-tools">
                             <button type="button" className="adm-btn-secondary" onClick={() => { setTabActiva('clientes'); toggleFormCliente(); }}>
@@ -2146,7 +2146,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <strong style={{ color: '#0f172a' }}>{c.cliente_nombre || 'Sin Cliente'}</strong>
+                                                    <strong style={{ color: 'var(--ink)' }}>{c.cliente_nombre || 'Sin Cliente'}</strong>
                                                 </td>
                                                 <td>
                                                     {listaMaquinas.length > 0 ? (
@@ -2339,7 +2339,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </div>
                                 </div>
 
-                                <h4 style={{ marginTop: '20px', fontSize: '14px', color: '#0f172a' }}>Documentación de Acreditación de Faena (Patente)</h4>
+                                <h4 style={{ marginTop: '20px', fontSize: '14px', color: 'var(--ink)' }}>Documentación de Acreditación de Faena (Patente)</h4>
                                 <div className="adm-grid-3" style={{ marginTop: '10px' }}>
                                     <div className="adm-field">
                                         <label>SOAP (Seguro Obligatorio)</label>
@@ -2656,7 +2656,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             <tr key={op.id_operador}>
                                                 <td style={{ fontWeight: '800', color: '#64748b' }}>#{op.id_operador}</td>
                                                 <td>
-                                                    <strong style={{ color: '#0f172a', fontSize: '13px' }}>
+                                                    <strong style={{ color: 'var(--ink)', fontSize: '13px' }}>
                                                         {op.id_usuario?.nombre || op.nombre || 'Operador'} {op.id_usuario?.apellido || op.apellido || ''}
                                                     </strong>
                                                 </td>
@@ -2873,7 +2873,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         />
                                     </label>
                                     {archivoGasto && (
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f8fafc', padding: '10px 14px', borderRadius: '8px', marginTop: '10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--surface-2)', padding: '10px 14px', borderRadius: '8px', marginTop: '10px' }}>
                                             <span className="adm-file-chip">
                                                 {archivoGasto.name} ({(archivoGasto.size / 1024).toFixed(1)} KB)
                                             </span>
