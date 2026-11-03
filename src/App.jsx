@@ -83,7 +83,7 @@ export default function App() {
       overflowX: 'hidden'
     }}>
       {/* BARRA DE NAVEGACIÓN SUPERIOR UNIFICADA */}
-      <header style={{
+      <header className="app-top-header" style={{
         backgroundColor: modoNoche ? '#111827' : '#ffffff',
         borderBottom: modoNoche ? '1px solid #1f2937' : '1px solid #e2e8f0',
         padding: '0 24px',
@@ -96,8 +96,8 @@ export default function App() {
         zIndex: 50,
         boxShadow: modoNoche ? '0 4px 20px rgba(0,0,0,0.4)' : '0 2px 10px rgba(15,23,42,0.03)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
+        <div className="app-header-brand" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="app-header-logo" style={{
             backgroundColor: '#f59e0b',
             color: '#0f172a',
             fontWeight: '900',
@@ -108,12 +108,13 @@ export default function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)'
+            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)',
+            flexShrink: 0
           }}>
             M
           </div>
           <div>
-            <div style={{
+            <div className="app-header-title" style={{
               fontSize: '15px',
               fontWeight: '900',
               color: modoNoche ? '#f8fafc' : '#0f172a',
@@ -121,7 +122,7 @@ export default function App() {
             }}>
               MULTIMAK <span style={{ color: '#d97706' }}>360</span>
             </div>
-            <div style={{
+            <div className="app-header-subtitle" style={{
               fontSize: '10px',
               fontWeight: '800',
               color: modoNoche ? '#94a3b8' : '#64748b',
@@ -135,9 +136,10 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="app-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* ÚNICO BOTÓN MODO NOCHE / DÍA DE LA APLICACIÓN */}
           <button
+            className="app-btn-theme"
             onClick={alternarModoNoche}
             style={{
               display: 'flex',
@@ -154,11 +156,11 @@ export default function App() {
             }}
           >
             <span>{modoNoche ? '☀️' : '🌙'}</span>
-            <span>{modoNoche ? 'Día' : 'Noche'}</span>
+            <span className="app-btn-theme-label">{modoNoche ? 'Día' : 'Noche'}</span>
           </button>
 
           {/* FICHA DE USUARIO UNIFICADA (SIN REPETIR ROL) */}
-          <div style={{
+          <div className="app-user-chip" style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -166,8 +168,8 @@ export default function App() {
             padding: '6px 14px',
             borderRadius: '20px'
           }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-            <span style={{
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', flexShrink: 0 }} />
+            <span className="app-user-name" style={{
               fontSize: '12px',
               fontWeight: '700',
               color: modoNoche ? '#f8fafc' : '#0f172a'
@@ -177,6 +179,7 @@ export default function App() {
           </div>
 
           <button
+            className="app-btn-logout"
             onClick={cerrarSesion}
             style={{
               backgroundColor: 'transparent',

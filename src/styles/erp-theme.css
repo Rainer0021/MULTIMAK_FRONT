@@ -838,3 +838,348 @@ html body :is(.adm-card-title, .cnt-panel-title, .cnt-form-title) {
         visibility: hidden;
     }
 }
+
+/* --------------------------------------------------------------------------
+   17. OPTIMIZACIÓN INTEGRAL PARA DISPOSITIVOS MÓVILES Y TABLETS
+   -------------------------------------------------------------------------- */
+
+/* Cabecera superior compacta en tablets y móviles */
+@media (max-width: 768px) {
+    html body header.app-top-header {
+        padding: 8px 12px !important;
+        min-height: 54px !important;
+        height: auto !important;
+        flex-wrap: nowrap !important;
+        gap: 8px !important;
+    }
+    html body .app-header-brand {
+        gap: 8px !important;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+    html body .app-header-logo {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 15px !important;
+        border-radius: 6px !important;
+    }
+    html body .app-header-title {
+        font-size: 13.5px !important;
+        white-space: nowrap;
+    }
+    html body .app-header-subtitle {
+        font-size: 9px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
+    }
+    html body .app-header-actions {
+        gap: 6px !important;
+        flex-shrink: 0;
+    }
+    html body :is(.app-btn-theme, .app-btn-logout) {
+        padding: 5px 10px !important;
+        font-size: 11px !important;
+        height: 32px !important;
+        border-radius: 6px !important;
+        white-space: nowrap;
+    }
+    html body .app-user-chip {
+        padding: 4px 10px !important;
+        gap: 6px !important;
+    }
+    html body .app-user-name {
+        font-size: 11px !important;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 520px) {
+    html body .app-user-chip {
+        display: none !important;
+    }
+    html body .app-btn-theme-label {
+        display: none !important;
+    }
+    html body .app-btn-theme {
+        padding: 5px 8px !important;
+    }
+}
+
+/* Barra de navegación táctil deslizable en tablets y móviles (<= 1024px) */
+@media (max-width: 1024px) {
+    html body :is(.adm-nav-group, .cnt-nav-group) {
+        background: var(--surface) !important;
+        border: 1px solid var(--line) !important;
+        border-radius: var(--r-lg) !important;
+        box-shadow: var(--shadow) !important;
+        padding: 6px !important;
+        gap: 6px !important;
+        margin: 0 0 16px !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        flex-wrap: nowrap !important;
+    }
+    html body :is(.adm-nav-group, .cnt-nav-group)::-webkit-scrollbar {
+        display: none;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn) {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+        min-height: 38px !important;
+        padding: 7px 12px !important;
+        margin: 0 !important;
+        border-radius: var(--r) !important;
+        border: 1px solid transparent !important;
+        border-bottom: none !important;
+        font-size: 12.5px !important;
+        gap: 6px !important;
+        color: var(--ink-2) !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn).active {
+        background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%) !important;
+        color: #ffffff !important;
+        box-shadow: inset 0 -2px 0 var(--brand) !important;
+    }
+    html body :is(.adm-nav-btn, .cnt-nav-btn).active :is(.adm-nav-badge, .cnt-nav-badge),
+    html body :is(.adm-nav-btn, .cnt-nav-btn).active > span {
+        background-color: var(--brand) !important;
+        color: #14181f !important;
+    }
+}
+
+/* Login en móviles y tablets: conserva la marca arriba y formulario abajo */
+@media (max-width: 900px) {
+    html body .login-container {
+        flex-direction: column !important;
+        min-height: 100vh !important;
+    }
+    html body .login-hero {
+        display: flex !important;
+        flex: none !important;
+        padding: 18px 20px !important;
+        min-height: auto !important;
+    }
+    html body .login-hero-content,
+    html body .login-hero-footer {
+        display: none !important;
+    }
+    html body .login-panel {
+        flex: 1 !important;
+        width: 100% !important;
+        min-height: 0 !important;
+        padding: 28px 20px 40px !important;
+        align-items: flex-start !important;
+        box-shadow: none !important;
+    }
+    html body .login-box {
+        max-width: 400px !important;
+        margin: 0 auto !important;
+    }
+}
+
+/* Ajustes de pantallas móviles (<= 640px) */
+@media (max-width: 640px) {
+    html body :is(.adm-view-container, .cnt-view-container, .op-view-container) {
+        padding: 12px 10px 40px !important;
+        gap: 14px !important;
+    }
+
+    /* Encabezados de módulo */
+    html body :is(.adm-top-header, .cnt-top-header, .op-top-banner) {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        padding: 14px 16px !important;
+        gap: 12px !important;
+        margin-bottom: 14px !important;
+    }
+    html body .adm-title-block {
+        min-width: 0 !important;
+    }
+    html body :is(.adm-page-title, .cnt-header-title, .op-main-title) {
+        font-size: 17px !important;
+        line-height: 1.25 !important;
+    }
+    html body :is(.adm-page-desc, .op-main-desc) {
+        font-size: 12px !important;
+        line-height: 1.4 !important;
+    }
+    html body :is(.adm-top-header .adm-period-controls, .adm-top-header .adm-btn-refresh, .cnt-top-header .cnt-btn-sync) {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+
+    /* Barras de acción, buscadores y filtros */
+    html body :is(.adm-action-bar, .cnt-toolbar-row) {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        margin-bottom: 14px !important;
+    }
+    html body .adm-action-tools {
+        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+    }
+    html body .adm-action-tools > :is(.adm-search-wrap, .adm-btn-primary, :only-child) {
+        grid-column: 1 / -1 !important;
+        width: 100% !important;
+    }
+    html body .adm-action-tools button,
+    html body .cnt-toolbar-row > button {
+        width: 100% !important;
+        justify-content: center !important;
+        padding: 0 10px !important;
+        font-size: 12.5px !important;
+    }
+    html body :is(.adm-search-wrap, .adm-search-input, .adm-search-input:focus, .cnt-search-input, .cnt-select-filter, .adm-select-period) {
+        width: 100% !important;
+        min-width: 0 !important;
+        font-size: 15px !important;
+    }
+    html body :is(.adm-period-controls, .cnt-filter-row) {
+        width: 100% !important;
+        gap: 8px !important;
+    }
+    html body .adm-period-controls > :is(select, input, div),
+    html body .cnt-filter-row > * {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    html body .adm-period-controls > div > button {
+        flex: 1 1 50% !important;
+        text-align: center !important;
+    }
+
+    /* Tarjetas KPI en cuadrícula 2x2 compacta */
+    html body :is(.adm-kpi-grid, .cnt-kpi-grid) {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 10px !important;
+        margin-bottom: 14px !important;
+    }
+    html body .cnt-kpi-grid > .cnt-kpi-card.ingresos:first-child {
+        grid-column: 1 / -1 !important;
+    }
+    html body :is(.adm-kpi-card, .cnt-kpi-card) {
+        padding: 12px !important;
+    }
+    html body :is(.adm-kpi-sub, .cnt-kpi-sub) {
+        font-size: 11px !important;
+        line-height: 1.25 !important;
+    }
+    html body :is(.adm-kpi-value, .cnt-kpi-value) {
+        font-size: 20px !important;
+        margin: 4px 0 2px !important;
+        word-break: break-word;
+    }
+    html body :is(.adm-kpi-foot, .cnt-kpi-foot) {
+        font-size: 11px !important;
+        line-height: 1.3 !important;
+    }
+
+    /* Paneles y tarjetas de contenido */
+    html body :is(.adm-card, .adm-profit-card, .adm-form-box, .cnt-panel-box, .cnt-form-card, .op-card, .op-side-card) {
+        padding: 14px 12px !important;
+        margin-bottom: 14px !important;
+    }
+    html body :is(.adm-card-head, .adm-profit-header, .cnt-panel-header) {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        margin-bottom: 12px !important;
+    }
+
+    /* Tablas responsivas con desplazamiento horizontal suave */
+    html body :is(.adm-table-wrap, .cnt-table-wrap) {
+        margin: 0 !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        border-radius: var(--r) !important;
+    }
+    html body :is(.adm-table, .cnt-table) {
+        min-width: 560px;
+        font-size: 12px !important;
+    }
+    html body :is(.adm-table, .cnt-table) th {
+        padding: 8px 10px !important;
+        font-size: 11px !important;
+    }
+    html body :is(.adm-table, .cnt-table) td {
+        padding: 8px 10px !important;
+        font-size: 12px !important;
+    }
+
+    /* Formularios y grillas de campos */
+    html body :is(.adm-grid-3, .adm-grid-2, .cnt-grid-inputs, .op-grid-2) {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    html body :is(
+        .adm-field input, .adm-field select, .adm-select-period, .adm-search-input,
+        .cnt-input-group input, .cnt-input-group select, .cnt-search-input, .cnt-select-filter,
+        .cnt-machine-row select, .cnt-machine-row input, .op-input
+    ) {
+        font-size: 16px !important;
+    }
+    html body .cnt-machines-header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+    }
+    html body .cnt-machine-row {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        padding-bottom: 8px;
+        border-bottom: 1px dashed var(--line);
+    }
+    html body .cnt-machine-row select {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+    }
+    html body .cnt-machine-row input {
+        flex: 1 1 calc(100% - 56px) !important;
+    }
+    html body .adm-form-actions {
+        gap: 8px !important;
+    }
+    html body .adm-form-actions button {
+        flex: 1 1 0 !important;
+        justify-content: center !important;
+    }
+
+    /* Modales y visores de documentos */
+    html body :is(.adm-modal-overlay, .cnt-modal-overlay) {
+        padding: 10px !important;
+    }
+    html body :is(.adm-modal-content, .cnt-modal-card) {
+        max-height: 92vh !important;
+        width: 100% !important;
+    }
+    html body :is(.adm-modal-header, .cnt-modal-head) {
+        padding: 12px 14px !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+    html body :is(.adm-modal-body, .cnt-modal-body) {
+        padding: 12px !important;
+    }
+    html body :is(.adm-modal-body iframe, .cnt-viewer-iframe) {
+        height: 58vh !important;
+    }
+    html body :is(.adm-modal-body img, .cnt-viewer-img) {
+        max-height: 58vh !important;
+    }
+}
+
+@media (max-width: 359px) {
+    html body :is(.adm-kpi-grid, .cnt-kpi-grid),
+    html body .adm-action-tools {
+        grid-template-columns: 1fr !important;
+    }
+}

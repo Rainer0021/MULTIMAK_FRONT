@@ -793,8 +793,8 @@ export default function VistaContador({ modoNoche }) {
             {pestaña === 'contratos' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div className="cnt-filter-row" style={{ width: '60%' }}>
+                    <div className="cnt-toolbar-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <div className="cnt-filter-row" style={{ flex: '1 1 260px' }}>
                             <input
                                 type="text"
                                 className="cnt-search-input"

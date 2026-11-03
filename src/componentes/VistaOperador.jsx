@@ -165,16 +165,26 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
     };
 
     // Canvas Firma
+    const obtenerPuntoCanvas = (e, canvas) => {
+        const rect = canvas.getBoundingClientRect();
+        const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+        const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+        const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+        return {
+            x: (clienteX - rect.left) * scaleX,
+            y: (clienteY - rect.top) * scaleY,
+        };
+    };
+
     const iniciarDibujo = (e) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        const rect = canvas.getBoundingClientRect();
-        const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+        const { x, y } = obtenerPuntoCanvas(e, canvas);
 
         ctx.beginPath();
-        ctx.moveTo(clienteX - rect.left, clienteY - rect.top);
+        ctx.moveTo(x, y);
         setDibujando(true);
         setFirmaDibujada(true);
         if (errores.firma) setErrores((prev) => ({ ...prev, firma: null }));
@@ -183,15 +193,14 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
     const dibujar = (e) => {
         if (!dibujando) return;
         const canvas = canvasRef.current;
+        if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        const rect = canvas.getBoundingClientRect();
-        const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+        const { x, y } = obtenerPuntoCanvas(e, canvas);
 
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
         ctx.strokeStyle = modoNoche ? '#38bdf8' : '#0f172a';
-        ctx.lineTo(clienteX - rect.left, clienteY - rect.top);
+        ctx.lineTo(x, y);
         ctx.stroke();
     };
 
