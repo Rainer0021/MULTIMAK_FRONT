@@ -26,31 +26,36 @@ export default function InicioSesion({ onLogin }) {
 
     const manejarEnvio = async (e) => {
         e.preventDefault();
+        if (cargando) return; // evita dobles envíos
         setError('');
         setCargando(true);
 
         const rutFormateado = rut.trim();
-        const rutSinPuntos = rutFormateado.replace(/\./g, '');
         const claveLimpia = contraseña.trim();
 
         try {
-            let res;
-            try {
-                res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
-            } catch (err1) {
-                try {
-                    res = await axios.post('/login/', { rut: rutSinPuntos, contraseña: claveLimpia });
-                } catch (err2) {
-                    res = await axios.post('/login-operador/', { rut: rutFormateado, contraseña: claveLimpia });
-                }
-            }
+            // Una sola petición: el servidor acepta el RUT con o sin puntos y guion
+            // y atiende a todos los roles (administrador, contador y operador).
+            const res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
 
-            if (res && res.data) {
+            if (res && res.data && res.data.rol) {
                 onLogin(res.data);
+            } else {
+                setError('Respuesta inesperada del servidor. Intenta nuevamente.');
             }
-        } catch (errFinal) {
-            const msg = errFinal.response?.data?.error || 'RUT o contraseña incorrectos.';
-            setError(msg);
+        } catch (err) {
+            if (err.response) {
+                const { status, data } = err.response;
+                if (status === 400 || status === 401) {
+                    setError(data?.error || 'RUT o contraseña incorrectos.');
+                } else {
+                    setError(data?.error || 'Error del servidor. Intenta nuevamente en unos minutos.');
+                }
+            } else if (err.request) {
+                setError('No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.');
+            } else {
+                setError('No se pudo iniciar sesión. Intenta nuevamente.');
+            }
         } finally {
             setCargando(false);
         }

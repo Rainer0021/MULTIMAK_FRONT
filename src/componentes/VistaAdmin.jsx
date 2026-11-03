@@ -142,6 +142,50 @@ const formatearTelefonoCL = (valor) => {
 
 // Fecha de hoy en hora local (YYYY-MM-DD). toISOString() usa UTC y de noche en Chile marca "mañana".
 const hoyLocalISO = () => new Date().toLocaleDateString('en-CA');
+const sumarDiasISO = (dias) => {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    return d.toLocaleDateString('en-CA');
+};
+const mesActualISO = () => hoyLocalISO().slice(0, 7);
+
+// Estados de máquina: antes el front guardaba "En Taller" y el back "EN TALLER". Ahora se compara sin importar el formato.
+const estadoMaquinaNorm = (e) => String(e || '').trim().toUpperCase();
+const maquinaEnTallerOMantencion = (e) => {
+    const x = estadoMaquinaNorm(e);
+    return x.includes('TALLER') || x.includes('REQUIERE');
+};
+const nombreEstadoMaquina = (e) => {
+    const x = estadoMaquinaNorm(e);
+    if (!x || x === 'OPERATIVA' || x === 'DISPONIBLE') return 'Operativa';
+    if (x === 'EN FAENA') return 'En faena';
+    if (x.includes('TALLER')) return 'En taller';
+    if (x.includes('REQUIERE')) return 'Requiere mantención';
+    return e;
+};
+
+// En pantalla el administrador ve el NOMBRE del contrato, no su número interno.
+const nombreContrato = (c) => (c ? (c.nombre_contrato || c.nombre || `Contrato #${c.id_contrato ?? c.id}`) : 'Sin contrato');
+
+const formatoCLP = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+
+// Convierte la respuesta de error de la API en { campo: mensaje, general: mensaje }.
+const extraerErroresApi = (err, defecto, camposMostrados = []) => {
+    const d = err && err.response && err.response.data;
+    if (!d) {
+        return { general: err && err.request ? 'No hay conexión con el servidor. Intenta nuevamente.' : defecto };
+    }
+    if (typeof d === 'string') return { general: d.length < 200 ? d : defecto };
+    const out = {};
+    const sueltos = [];
+    Object.entries(d).forEach(([campo, v]) => {
+        const msg = Array.isArray(v) ? v.join(' ') : (typeof v === 'string' ? v : JSON.stringify(v));
+        out[campo] = msg;
+        if (!camposMostrados.includes(campo)) sueltos.push(msg);
+    });
+    out.general = sueltos.length ? sueltos.join(' ') : (Object.keys(out).length ? 'Revisa los campos marcados en rojo.' : defecto);
+    return out;
+};
 
 const aFechaLocal = (iso) => {
     const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
@@ -166,18 +210,26 @@ const textoDias = (n) => `${n} ${n === 1 ? 'día' : 'días'}`;
 export default function VistaAdmin({ usuario, modoNoche }) {
     const fechaHoy = hoyLocalISO();
 
-    const calcularFechaFutura = (dias) => {
-        const d = new Date();
-        d.setDate(d.getDate() + dias);
-        return d.toISOString().split('T')[0];
-    };
+    const calcularFechaFutura = (dias) => sumarDiasISO(dias);
 
-    const [diasProyeccion, setDiasProyeccion] = useState(21);
-    const [fechaProyeccion, setFechaProyeccion] = useState(calcularFechaFutura(21));
+    // La consulta de disponibilidad parte HOY (antes partía en 21 días).
+    const [diasProyeccion, setDiasProyeccion] = useState(0);
+    const [fechaProyeccion, setFechaProyeccion] = useState(fechaHoy);
 
-    const [mesSeleccionado, setMesSeleccionado] = useState(new Date().toISOString().slice(0, 7));
+    const [mesSeleccionado, setMesSeleccionado] = useState(mesActualISO());
+    // Período de los indicadores del dashboard ('' = todo el historial).
+    const [mesKpi, setMesKpi] = useState(mesActualISO());
 
     const [tabActiva, setTabActiva] = useState('dashboard');
+    const [verMasAlertas, setVerMasAlertas] = useState(false);
+
+    // Al entrar al resumen, la disponibilidad siempre parte en "Hoy".
+    useEffect(() => {
+        if (tabActiva === 'dashboard') {
+            setDiasProyeccion(0);
+            setFechaProyeccion(hoyLocalISO());
+        }
+    }, [tabActiva]);
     const [cargando, setCargando] = useState(true);
     const [error, setError] = useState('');
     const [mensajeExito, setMensajeExito] = useState('');
@@ -225,7 +277,6 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const [reportes, setReportes] = useState([]);
     const [gastos, setGastos] = useState([]);
     const [contratos, setContratos] = useState([]);
-    const [usuariosDisponibles, setUsuariosDisponibles] = useState([]);
 
     const [busquedaCli, setBusquedaCli] = useState('');
     const [busquedaMaq, setBusquedaMaq] = useState('');
@@ -262,7 +313,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         modelo: '',
         tipo: 'Excavadora',
         horometro_actual: '',
-        estado: 'Disponible',
+        estado: 'OPERATIVA',
         fecha_venc_soap: '',
         fecha_venc_rev_tecnica: '',
         fecha_venc_permiso: ''
@@ -277,7 +328,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         nombre: '',
         apellido: '',
         rut: '',
-        id_usuario: '',
+        password: '',
         TipoLicencia: ['Clase D'],
         fecha_vencimiento_licencia: ''
     });
@@ -349,14 +400,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         setCargando(true);
         setError('');
         try {
-            const [resCli, resMaq, resOp, resRep, resGas, resCont, resUsers, resDocs] = await Promise.all([
+            const [resCli, resMaq, resOp, resRep, resGas, resCont, resDocs] = await Promise.all([
                 axios.get('clientes/').catch(() => axios.get('/clientes/')).catch(() => ({ data: [] })),
                 axios.get('maquinarias/').catch(() => axios.get('/maquinarias/')).catch(() => ({ data: [] })),
                 axios.get('operadores/').catch(() => axios.get('/operadores/')).catch(() => ({ data: [] })),
                 axios.get('reports/').catch(() => axios.get('/reports/')).catch(() => ({ data: [] })),
                 axios.get('gastos/').catch(() => axios.get('/gastos/')).catch(() => ({ data: [] })),
                 axios.get('/contratos/').catch(() => axios.get('contratos/')).catch(() => ({ data: [] })),
-                axios.get('usuarios/').catch(() => axios.get('/usuarios/')).catch(() => ({ data: [] })),
                 axios.get('doc-maquinaria/').catch(() => axios.get('/doc-maquinaria/')).catch(() => ({ data: [] }))
             ]);
 
@@ -367,7 +417,6 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             setReportes(resRep.data?.results || (Array.isArray(resRep.data) ? resRep.data : []));
             setGastos(resGas.data?.results || (Array.isArray(resGas.data) ? resGas.data : []));
             setContratos(resCont.data?.results || (Array.isArray(resCont.data) ? resCont.data : []));
-            setUsuariosDisponibles(resUsers.data?.results || (Array.isArray(resUsers.data) ? resUsers.data : []));
         } catch (err) {
             setError('Error al sincronizar los datos con el servidor.');
         } finally {
@@ -401,7 +450,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             detalleAlerta = `Alcanzó pauta de ${proximaPauta} hrs. Ingreso requerido a taller`;
         }
 
-        if (m.estado === 'En Taller' || m.estado === 'Requiere Mantención') {
+        if (maquinaEnTallerOMantencion(m.estado)) {
             nivelAlerta = 'MANTENCIÓN_PENDIENTE';
             detalleAlerta = 'Equipo en taller o fuera de servicio';
         }
@@ -436,7 +485,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         });
 
         const ocupadaPorContrato = Boolean(contratoActivoEnFecha);
-        const enMantencionOTaller = m.estado === 'En Taller' || m.estado === 'Requiere Mantención';
+        const enMantencionOTaller = maquinaEnTallerOMantencion(m.estado);
         const disponibleTotal = !ocupadaPorContrato && !enMantencionOTaller;
 
         const idClienteCont = typeof contratoActivoEnFecha?.id_cliente === 'object'
@@ -469,10 +518,62 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         ? Math.round((maquinasLibres.length / maquinarias.length) * 100)
         : 100;
 
-    const totalIngresos = reportes.reduce((acc, r) => acc + ((parseFloat(r.horas_trabajadas) || 0) * 28000), 0);
-    const totalGastos = gastos.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
+    // ---- Indicadores del dashboard (período seleccionado; vacío = todo el historial) ----
+    const enPeriodoKpi = (iso) => !mesKpi || String(iso || '').slice(0, 7) === mesKpi;
+    const reportesPeriodo = reportes.filter(r => enPeriodoKpi(r.fecha));
+    const gastosPeriodo = gastos.filter(g => enPeriodoKpi(g.fecha));
+
+    // El ingreso de cada parte lo calcula el servidor con la tarifa real de la máquina en ese contrato.
+    const totalIngresos = reportesPeriodo.reduce((acc, r) => acc + (parseFloat(r.ingreso_estimado) || 0), 0);
+    const totalGastos = gastosPeriodo.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
     const margenGlobal = totalIngresos - totalGastos;
-    const totalHorasFaenaGlobal = reportes.reduce((acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0);
+    const margenPct = totalIngresos > 0 ? Math.round((margenGlobal / totalIngresos) * 100) : null;
+    const totalHorasFaenaGlobal = reportesPeriodo.reduce((acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0);
+    const costoPorHora = totalHorasFaenaGlobal > 0 ? totalGastos / totalHorasFaenaGlobal : 0;
+    const ingresoPorHora = totalHorasFaenaGlobal > 0 ? totalIngresos / totalHorasFaenaGlobal : 0;
+    const partesSinContrato = reportesPeriodo.filter(r => !r.id_contrato).length;
+
+    const gastosPorCategoria = Object.entries(
+        gastosPeriodo.reduce((acc, g) => {
+            const k = g.categoria_gasto || 'Otros';
+            acc[k] = (acc[k] || 0) + (parseFloat(g.monto) || 0);
+            return acc;
+        }, {})
+    ).sort((x, y) => y[1] - x[1]);
+
+    const ingresosPorContrato = Object.values(
+        reportesPeriodo.reduce((acc, r) => {
+            if (!r.id_contrato) return acc;
+            const k = r.id_contrato;
+            if (!acc[k]) acc[k] = { nombre: r.contrato_nombre || `Contrato #${k}`, cliente: r.cliente_nombre || '', horas: 0, ingreso: 0 };
+            acc[k].horas += parseFloat(r.horas_trabajadas) || 0;
+            acc[k].ingreso += parseFloat(r.ingreso_estimado) || 0;
+            return acc;
+        }, {})
+    ).sort((x, y) => y.ingreso - x.ingreso).slice(0, 5);
+
+    const contratosVigentesHoy = contratos.filter(c => {
+        const est = String(c.estado_contrato || 'ACTIVO').toUpperCase();
+        return (est === 'ACTIVO' || est === 'PRORROGADO')
+            && (!c.fecha_inicio || c.fecha_inicio <= fechaHoy)
+            && (!c.fecha_fin || c.fecha_fin >= fechaHoy);
+    });
+    const contratosPorVencer = contratosVigentesHoy
+        .filter(c => c.fecha_fin && diasHasta(c.fecha_fin) <= 30)
+        .sort((x, y) => String(x.fecha_fin).localeCompare(String(y.fecha_fin)));
+
+    const alertasDocumentos = [
+        ...documentosMaq.map(d => {
+            const idM = d.id_maquina?.id_maquina || d.id_maquina;
+            const maqDoc = maquinarias.find(m => String(m.id_maquina) === String(idM));
+            return { etiqueta: `${d.tipo_documento} ${maqDoc?.patente || ''}`.trim(), ...evaluarVencimiento(d.fecha_vencimiento) };
+        }),
+        ...operadores.map(op => ({
+            etiqueta: `Licencia ${op.nombre || ''} ${op.apellido || ''}`.trim(),
+            ...evaluarVencimiento(op.fecha_vencimiento_licencia)
+        }))
+    ].filter(x => x.estado === 'VENCIDO' || x.estado === 'ALERTA');
+    const documentosVencidos = alertasDocumentos.filter(x => x.estado === 'VENCIDO').length;
 
     const flotaFiltrada = estadoFlotaProyectada.filter(m => {
         if (filtroDisponibilidadTabla === 'todos') return true;
@@ -605,7 +706,6 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const guardarCliente = async (e) => {
         e.preventDefault();
-        setError('');
         setMensajeExito('');
 
         const nuevosErrores = {
@@ -654,12 +754,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     Object.entries(resData).forEach(([campo, msgs]) => {
                         erroresServidor[campo] = Array.isArray(msgs) ? msgs.join(', ') : msgs;
                     });
-                    setErroresCli(erroresServidor);
+                    setErroresCli({ ...erroresServidor, general: erroresServidor.general || 'No se pudo guardar el cliente. Revisa los campos marcados.' });
                 } else {
-                    setError(`Error del servidor (${err.response.status}): ${resData}`);
+                    setErroresCli({ general: `Error del servidor (${err.response.status}).` });
                 }
             } else {
-                setError('Error de conexión con el servidor.');
+                setErroresCli({ general: 'Error de conexión con el servidor.' });
             }
         }
     };
@@ -717,7 +817,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             setEditandoMaqId(null);
         } else {
             setEditandoMaqId(null);
-            setFormMaq({ patente: '', marca: '', modelo: '', tipo: 'Excavadora', horometro_actual: '', estado: 'Disponible', fecha_venc_soap: '', fecha_venc_rev_tecnica: '', fecha_venc_permiso: '' });
+            setFormMaq({ patente: '', marca: '', modelo: '', tipo: 'Excavadora', horometro_actual: '', estado: 'OPERATIVA', fecha_venc_soap: '', fecha_venc_rev_tecnica: '', fecha_venc_permiso: '' });
             setArchivosMaq({ soap: null, rev_tecnica: null, permiso: null });
             setErroresMaq({});
             setMostrarModalMaq(true);
@@ -737,7 +837,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             modelo: maq.modelo || '',
             tipo: maq.tipo || 'Excavadora',
             horometro_actual: maq.horometro_actual ?? maq.horometro ?? '',
-            estado: maq.estado || 'Disponible',
+            estado: estadoMaquinaNorm(maq.estado) === 'DISPONIBLE' ? 'OPERATIVA' : (estadoMaquinaNorm(maq.estado) || 'OPERATIVA'),
             fecha_venc_soap: docSoapObj?.fecha_vencimiento || '',
             fecha_venc_rev_tecnica: docRevObj?.fecha_vencimiento || '',
             fecha_venc_permiso: docPermisoObj?.fecha_vencimiento || ''
@@ -750,114 +850,74 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const guardarMaquinaria = async (e) => {
         e.preventDefault();
-        setError('');
-        setMensajeExito('');
-
-        // Fechas de vencimiento de documentos: no antes de hoy (salvo que sea la fecha ya guardada).
-        const fechasDocsGuardadas = editandoMaqId
-            ? documentosMaq.filter(d => String(d.id_maquina) === String(editandoMaqId)).map(d => d.fecha_vencimiento)
-            : [];
-        const camposDocs = [
-            ['SOAP', formMaq.fecha_venc_soap],
-            ['la Revisión Técnica', formMaq.fecha_venc_rev_tecnica],
-            ['el Permiso de Circulación', formMaq.fecha_venc_permiso]
-        ];
-        const docConFechaPasada = camposDocs.find(([, f]) => f && f < fechaHoy && !fechasDocsGuardadas.includes(f));
-        if (docConFechaPasada) {
-            setError(`La fecha de vencimiento de ${docConFechaPasada[0]} no puede ser anterior a hoy.`);
-            return;
-        }
 
         const nuevosErrores = {
             patente: validarCampoMaquinaria('patente', formMaq.patente),
             marca: validarCampoMaquinaria('marca', formMaq.marca),
             modelo: validarCampoMaquinaria('modelo', formMaq.modelo),
-            horometro_actual: validarCampoMaquinaria('horometro_actual', formMaq.horometro_actual)
+            horometro_actual: validarCampoMaquinaria('horometro_actual', String(formMaq.horometro_actual ?? ''))
         };
-
         if (Object.values(nuevosErrores).some(msg => msg !== null)) {
-            setErroresMaq(nuevosErrores);
+            setErroresMaq({ ...nuevosErrores, general: 'Revisa los campos marcados en rojo.' });
             return;
         }
-
         setErroresMaq({});
 
-        const payload = {
-            patente: formMaq.patente.toUpperCase().trim(),
-            marca: formMaq.marca.trim(),
-            modelo: formMaq.modelo.trim(),
-            tipo: formMaq.tipo,
-            horometro_actual: parseFloat(formMaq.horometro_actual) || 0,
-            estado: formMaq.estado || 'Disponible'
-        };
-
         try {
-            let resMaq;
+            let idMaqCreada = editandoMaqId;
+
+            // 1. Guardar o actualizar la máquina
             if (editandoMaqId) {
-                resMaq = await axios.put(`maquinarias/${editandoMaqId}/`, payload);
+                await axios.put(`maquinarias/${editandoMaqId}/`, formMaq);
+                setMensajeExito('Maquinaria actualizada correctamente.');
             } else {
-                resMaq = await axios.post('maquinarias/', payload);
+                const res = await axios.post('maquinarias/', formMaq);
+                idMaqCreada = res.data.id_maquina;
+                setMensajeExito('Maquinaria registrada correctamente.');
             }
 
-            const idMaqCreada = resMaq.data?.id_maquina || editandoMaqId;
+            // 2. Auxiliar: PUT si el doc ya existe, POST si es nuevo
+            const guardarOActualizarDoc = async (idMaq, tipoDoc, numDoc, fechaVenc) => {
+                if (!fechaVenc) return;
+                const docExistente = obtenerDocMaquina(idMaq, tipoDoc, documentosMaq);
+                const payload = {
+                    id_maquina: idMaq,
+                    tipo_documento: tipoDoc,
+                    numero_documento: numDoc,
+                    fecha_emision: fechaHoy,
+                    fecha_vencimiento: fechaVenc,
+                    url_archivo: docExistente?.url_archivo || ''
+                };
 
+                if (docExistente?.id_doc_maquina) {
+                    return axios.put(`doc-maquinaria/${docExistente.id_doc_maquina}/`, payload);
+                } else {
+                    return axios.post('doc-maquinaria/', payload);
+                }
+            };
+
+            // 3. Procesar documentos sin duplicar
             if (idMaqCreada) {
                 const promesasDocs = [];
-
                 if (formMaq.fecha_venc_soap) {
-                    const payloadSoap = {
-                        id_maquina: idMaqCreada,
-                        tipo_documento: 'SOAP',
-                        numero_documento: `SOAP-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`,
-                        fecha_emision: fechaHoy,
-                        fecha_vencimiento: formMaq.fecha_venc_soap,
-                        url_archivo: ''
-                    };
-                    promesasDocs.push(axios.post('doc-maquinaria/', payloadSoap));
+                    promesasDocs.push(guardarOActualizarDoc(idMaqCreada, 'SOAP', `SOAP-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_soap));
                 }
-
                 if (formMaq.fecha_venc_rev_tecnica) {
-                    const payloadRev = {
-                        id_maquina: idMaqCreada,
-                        tipo_documento: 'REVISIÓN TÉCNICA',
-                        numero_documento: `REV-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`,
-                        fecha_emision: fechaHoy,
-                        fecha_vencimiento: formMaq.fecha_venc_rev_tecnica,
-                        url_archivo: ''
-                    };
-                    promesasDocs.push(axios.post('doc-maquinaria/', payloadRev));
+                    promesasDocs.push(guardarOActualizarDoc(idMaqCreada, 'REVISIÓN TÉCNICA', `REV-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_rev_tecnica));
                 }
-
                 if (formMaq.fecha_venc_permiso) {
-                    const payloadPermiso = {
-                        id_maquina: idMaqCreada,
-                        tipo_documento: 'PERMISO DE CIRCULACIÓN',
-                        numero_documento: `PERM-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`,
-                        fecha_emision: fechaHoy,
-                        fecha_vencimiento: formMaq.fecha_venc_permiso,
-                        url_archivo: ''
-                    };
-                    promesasDocs.push(axios.post('doc-maquinaria/', payloadPermiso));
+                    promesasDocs.push(guardarOActualizarDoc(idMaqCreada, 'PERMISO DE CIRCULACIÓN', `PERM-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_permiso));
                 }
-
-                if (promesasDocs.length > 0) {
-                    await Promise.all(promesasDocs);
-                }
+                if (promesasDocs.length > 0) await Promise.all(promesasDocs);
             }
 
-            setMensajeExito('Maquinaria y documentación actualizadas correctamente.');
             setMostrarModalMaq(false);
             setEditandoMaqId(null);
-            setFormMaq({ patente: '', marca: '', modelo: '', tipo: 'Excavadora', horometro_actual: '', estado: 'Disponible', fecha_venc_soap: '', fecha_venc_rev_tecnica: '', fecha_venc_permiso: '' });
-            setArchivosMaq({ soap: null, rev_tecnica: null, permiso: null });
-
-            setTimeout(() => {
-                cargarTodo();
-            }, 400);
-
-        } catch (err) {
-            console.error("Error al guardar:", err.response?.data || err.message);
-            setError('Error al guardar la maquinaria o sus fechas de vencimiento.');
+            setErroresMaq({});
+            cargarTodo();
+        } catch (error) {
+            console.error('Error al guardar maquinaria o documentos:', error);
+            setErroresMaq(extraerErroresApi(error, 'Ocurrió un error al guardar los datos de la maquinaria.', ['patente', 'marca', 'modelo', 'horometro_actual']));
         }
     };
 
@@ -886,6 +946,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         let msg = null;
         if (nombre === 'nombre' && !valor.trim()) msg = 'Ingrese el nombre del operador.';
         if (nombre === 'apellido' && !valor.trim()) msg = 'Ingrese el apellido del operador.';
+        if (nombre === 'password' && valor && valor.length < 6) msg = 'La contraseña debe tener al menos 6 caracteres.';
         if (nombre === 'rut') {
             if (!valor.trim()) msg = 'Ingrese el RUT del operador.';
             else if (!validarRutChileno(valor)) msg = 'RUT inválido.';
@@ -911,7 +972,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 nombre: '',
                 apellido: '',
                 rut: '',
-                id_usuario: '',
+                password: '',
                 TipoLicencia: ['Clase D'],
                 fecha_vencimiento_licencia: ''
             });
@@ -932,7 +993,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             nombre: op.id_usuario?.nombre || op.nombre || '',
             apellido: op.id_usuario?.apellido || op.apellido || '',
             rut: op.id_usuario?.rut || op.rut || '',
-            id_usuario: op.id_usuario?.id_usuario || op.id_usuario || '',
+            password: '',
             TipoLicencia: licenciasArray,
             fecha_vencimiento_licencia: op.fecha_vencimiento_licencia || ''
         });
@@ -946,12 +1007,17 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
         const listaLicencias = Array.isArray(formOp.TipoLicencia)
             ? formOp.TipoLicencia
-            : [formOp.TipoLicencia];
+            : [formOp.TipoLicencia].filter(Boolean);
 
-        if (listaLicencias.length === 0) {
-            setErroresOp(prev => ({ ...prev, TipoLicencia: 'Debe seleccionar al menos una licencia.' }));
-            return;
-        }
+        const nuevosErrores = {
+            nombre: validarCampoOperador('nombre', formOp.nombre),
+            apellido: validarCampoOperador('apellido', formOp.apellido),
+            rut: validarCampoOperador('rut', formOp.rut)
+        };
+        if (!editandoOpId && !formOp.password) nuevosErrores.password = 'Defina una contraseña para que el operador pueda ingresar.';
+        else if (formOp.password) nuevosErrores.password = validarCampoOperador('password', formOp.password);
+
+        if (listaLicencias.length === 0) nuevosErrores.TipoLicencia = 'Debe seleccionar al menos una licencia.';
 
         const licenciaGuardada = editandoOpId
             ? (operadores.find(o => o.id_operador === editandoOpId)?.fecha_vencimiento_licencia || '')
@@ -959,15 +1025,20 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         if (formOp.fecha_vencimiento_licencia
             && formOp.fecha_vencimiento_licencia < fechaHoy
             && formOp.fecha_vencimiento_licencia !== licenciaGuardada) {
-            setError('La fecha de vencimiento de la licencia no puede ser anterior a hoy.');
-            return;
+            nuevosErrores.fecha_vencimiento_licencia = 'La licencia debe vencer a partir de hoy.';
         }
 
+        if (Object.values(nuevosErrores).some(msg => msg)) {
+            setErroresOp({ ...nuevosErrores, general: 'Revisa los campos marcados en rojo.' });
+            return;
+        }
+        setErroresOp({});
+
         const formData = new FormData();
-        if (formOp.id_usuario) formData.append('id_usuario', parseInt(formOp.id_usuario, 10));
-        formData.append('nombre', formOp.nombre);
-        formData.append('apellido', formOp.apellido);
+        formData.append('nombre', formOp.nombre.trim());
+        formData.append('apellido', formOp.apellido.trim());
         formData.append('rut', formOp.rut);
+        if (formOp.password) formData.append('password', formOp.password);
         formData.append('TipoLicencia', listaLicencias.join(', '));
 
         if (formOp.fecha_vencimiento_licencia) {
@@ -992,9 +1063,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             setMostrarModalOp(false);
             setEditandoOpId(null);
             setArchivoLicencia(null);
+            setErroresOp({});
             cargarTodo();
         } catch (err) {
-            setError('Error al guardar la información del operador.');
+            // El servidor explica qué falló (RUT repetido, contraseña corta, etc.) y se muestra dentro del formulario.
+            setErroresOp(extraerErroresApi(err, 'No se pudo guardar al operador. Intenta nuevamente.',
+                ['nombre', 'apellido', 'rut', 'password', 'TipoLicencia', 'fecha_vencimiento_licencia']));
         }
     };
 
@@ -1088,7 +1162,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
 
         if (formGasto.fecha && formGasto.fecha > fechaHoy) {
-            setError('La fecha del gasto no puede ser posterior a hoy.');
+            setErroresGasto({ general: 'La fecha del gasto no puede ser posterior a hoy.' });
             return;
         }
 
@@ -1101,7 +1175,8 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         formData.append('id_maquina', parseInt(formGasto.id_maquina, 10));
         if (formGasto.id_contrato) formData.append('id_contrato', parseInt(formGasto.id_contrato, 10));
         formData.append('numero_comprobante', formGasto.numero_comprobante.trim() || 'S/N');
-        formData.append('id_usuario', sesion.id_usuario || 1);
+        const idReal = sesion.id_usuario || sesion.id;
+        formData.append('id_usuario', idReal);
         if (archivoGasto) formData.append('archivo_comprobante', archivoGasto);
 
         try {
@@ -1116,8 +1191,8 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             setEditandoGastoId(null);
             setArchivoGasto(null);
             cargarTodo();
-        } catch {
-            setError('Error al registrar el gasto.');
+        } catch (err) {
+            setErroresGasto(extraerErroresApi(err, 'No se pudo registrar el gasto. Intenta nuevamente.', ['monto', 'id_maquina']));
         }
     };
 
@@ -1236,14 +1311,53 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                         </div>
                     </div>
 
-                    <div className="adm-kpi-grid">
+                    <div className="adm-period-controls" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                        <span className="adm-period-label">Período de los indicadores</span>
+                        <div style={{ display: 'inline-flex', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', background: modoNoche ? '#0f172a' : '#fff' }}>
+                            {[
+                                [true, 'Mes'],
+                                [false, 'Todo el historial'],
+                            ].map(([esMes, texto]) => {
+                                const activo = esMes ? Boolean(mesKpi) : !mesKpi;
+                                return (
+                                    <button
+                                        key={texto}
+                                        type="button"
+                                        onClick={() => setMesKpi(esMes ? (mesKpi || mesActualISO()) : '')}
+                                        style={{
+                                            padding: '8px 16px',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '13px',
+                                            fontWeight: '700',
+                                            background: activo ? '#0f172a' : 'transparent',
+                                            color: activo ? '#fff' : (modoNoche ? '#cbd5e1' : '#475569')
+                                        }}
+                                    >
+                                        {texto}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {mesKpi && (
+                            <input
+                                type="month"
+                                className="adm-select-period"
+                                max={mesActualISO()}
+                                value={mesKpi}
+                                onChange={(e) => setMesKpi(e.target.value || mesActualISO())}
+                            />
+                        )}
+                    </div>
+
+                    <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '16px' }}>
                         <div
                             className="adm-kpi-card highlight"
                             onClick={() => setTabActiva('maquinarias')}
                             style={{ cursor: 'pointer' }}
                             title="Ver inventario de maquinarias"
                         >
-                            <span className="adm-kpi-sub">Disponibilidad al {fechaProyeccion}</span>
+                            <span className="adm-kpi-sub">Disponibilidad al {formatoFechaCL(fechaProyeccion)}</span>
                             <div className="adm-kpi-value">{pctDisponibilidad}%</div>
                             <span className="adm-kpi-foot">
                                 {maquinasLibres.length} de {maquinarias.length} equipos disponibles
@@ -1252,63 +1366,227 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
                         <div
                             className={`adm-kpi-card ${maquinasConAlerta.length > 0 ? 'alert-card' : ''}`}
-                            onClick={() => setTabActiva('maquinarias')}
+                            onClick={() => document.getElementById('seccion-mantenciones')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                             style={{ cursor: 'pointer' }}
-                            title="Ver mantenciones pendientes"
+                            title="Ir a la tabla de mantenciones"
                         >
                             <span className="adm-kpi-sub">Alertas de mantención</span>
                             <div className="adm-kpi-value">{maquinasConAlerta.length}</div>
+                            <span className="adm-kpi-foot">Equipos cerca de su pauta de 500 h o en taller</span>
+                        </div>
+
+                        <div className="adm-kpi-card" onClick={() => setTabActiva('gastos')} style={{ cursor: 'pointer' }} title="Ver detalle de gastos">
+                            <span className="adm-kpi-sub">Gastos del período</span>
+                            <div className="adm-kpi-value" style={{ color: '#dc2626' }}>{formatoCLP(totalGastos)}</div>
                             <span className="adm-kpi-foot">
-                                {totalHorasFaenaGlobal.toFixed(1)} hrs operadas acumuladas
+                                {gastosPorCategoria.length > 0
+                                    ? `Mayor gasto: ${gastosPorCategoria[0][0]} (${formatoCLP(gastosPorCategoria[0][1])})`
+                                    : 'Sin gastos en el período'}
                             </span>
                         </div>
 
-                        <div
-                            className="adm-kpi-card"
-                            onClick={() => setTabActiva('turnos')}
-                            style={{ cursor: 'pointer' }}
-                            title="Ver registro de partes diarios"
-                        >
-                            <span className="adm-kpi-sub">Ingresos Estimados</span>
-                            <div className="adm-kpi-value" style={{ color: '#16a34a' }}>
-                                ${totalIngresos.toLocaleString('es-CL')}
-                            </div>
-                            <span className="adm-kpi-foot">Calculado según partes diarios</span>
+                        <div className="adm-kpi-card" onClick={() => setTabActiva('turnos')} style={{ cursor: 'pointer' }} title="Ver partes diarios">
+                            <span className="adm-kpi-sub">Ingresos estimados</span>
+                            <div className="adm-kpi-value" style={{ color: '#16a34a' }}>{formatoCLP(totalIngresos)}</div>
+                            <span className="adm-kpi-foot">
+                                {margenPct !== null
+                                    ? `Margen: ${margenGlobal < 0 ? '-' : ''}${formatoCLP(Math.abs(margenGlobal))} (${margenPct}%)`
+                                    : 'Sin ingresos en el período'}
+                            </span>
                         </div>
+                    </div>
 
-                        <div
-                            className="adm-kpi-card"
-                            onClick={() => setTabActiva('gastos')}
-                            style={{ cursor: 'pointer' }}
-                            title="Ver detalle de gastos"
+                    <div style={{ marginBottom: '24px' }}>
+                        <button
+                            type="button"
+                            className="adm-btn-secondary"
+                            onClick={() => setVerMasAlertas(!verMasAlertas)}
                         >
-                            <span className="adm-kpi-sub">Gastos Operativos</span>
-                            <div className="adm-kpi-value" style={{ color: '#dc2626' }}>
-                                ${totalGastos.toLocaleString('es-CL')}
+                            {verMasAlertas ? '▲ Ocultar' : '▼ Ver'} contratos por vencer ({contratosPorVencer.length}) y documentos ({alertasDocumentos.length})
+                        </button>
+
+                        {verMasAlertas && (
+                            <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginTop: '16px' }}>
+                                <div
+                                    className={`adm-kpi-card ${contratosPorVencer.length > 0 ? 'alert-card' : ''}`}
+                                    onClick={() => setTabActiva('contratos')}
+                                    style={{ cursor: 'pointer' }}
+                                    title="Ver contratos"
+                                >
+                                    <span className="adm-kpi-sub">Contratos por vencer (30 días)</span>
+                                    <div className="adm-kpi-value">{contratosPorVencer.length}</div>
+                                    <span className="adm-kpi-foot">
+                                        {contratosPorVencer.length > 0
+                                            ? `Próximo: ${nombreContrato(contratosPorVencer[0])} (${formatoFechaCL(contratosPorVencer[0].fecha_fin)})`
+                                            : `${contratosVigentesHoy.length} contratos vigentes hoy`}
+                                    </span>
+                                </div>
+
+                                <div
+                                    className={`adm-kpi-card ${alertasDocumentos.length > 0 ? 'alert-card' : ''}`}
+                                    onClick={() => setTabActiva('maquinarias')}
+                                    style={{ cursor: 'pointer' }}
+                                    title="Ver documentos"
+                                >
+                                    <span className="adm-kpi-sub">Documentos y licencias</span>
+                                    <div className="adm-kpi-value">{alertasDocumentos.length}</div>
+                                    <span className="adm-kpi-foot">
+                                        {alertasDocumentos.length > 0
+                                            ? `${documentosVencidos} vencido(s) · el resto vence en 30 días`
+                                            : 'Todo al día'}
+                                    </span>
+                                </div>
                             </div>
-                            <span className="adm-kpi-foot">Combustible, repuestos y taller</span>
+                        )}
+                    </div>
+
+                    <div className="adm-grid-2" style={{ marginBottom: '24px', alignItems: 'stretch', ...(gastosPorCategoria.length === 0 ? { gridTemplateColumns: '1fr' } : {}) }}>
+                        {/* COLUMNA 1: GASTOS (solo si hay gastos en el período) */}
+                        {gastosPorCategoria.length > 0 && (
+                        <div className="adm-profit-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                            <div>
+                                <div className="adm-profit-header">
+                                    <div className="adm-profit-title-box">
+                                        <h3>Distribución de costos</h3>
+                                        <p>Principales categorías de egreso en el período.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTabActiva('gastos')}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: '#0284c7',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}
+                                    >
+                                        Ver detalle →
+                                    </button>
+                                </div>
+
+                                {gastosPorCategoria.length === 0 ? (
+                                    /* ESTADO NEUTRO (EMPTY STATE) PROFESIONAL */
+                                    <div style={{
+                                        padding: '32px 16px',
+                                        textAlign: 'center',
+                                        color: '#64748b',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '50%',
+                                            backgroundColor: modoNoche ? '#1e293b' : '#f1f5f9',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '18px',
+                                            marginBottom: '4px'
+                                        }}>
+                                            💳
+                                        </div>
+                                        <strong style={{ fontSize: '13px', color: modoNoche ? '#f8fafc' : '#0f172a' }}>
+                                            Sin egresos en este período
+                                        </strong>
+                                        <span style={{ fontSize: '12px', maxWidth: '280px', lineHeight: '1.4' }}>
+                                            No se registran gastos de combustible ni taller asignados durante el mes seleccionado.
+                                        </span>
+                                    </div>
+                                ) : (
+                                    /* BARRAS DE PROGRESO DE DISTRIBUCIÓN */
+                                    <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                        {gastosPorCategoria.slice(0, 3).map(([cat, monto]) => {
+                                            const pct = totalGastos > 0 ? Math.round((monto / totalGastos) * 100) : 0;
+                                            return (
+                                                <div key={cat}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '700' }}>
+                                                        <span>{cat}</span>
+                                                        <span>{formatoCLP(monto)} · {pct}%</span>
+                                                    </div>
+                                                    <div style={{ height: '8px', borderRadius: '4px', background: modoNoche ? '#1e293b' : '#e2e8f0', marginTop: '6px' }}>
+                                                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: '4px', background: '#dc2626' }} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {gastosPorCategoria.length > 3 && (
+                                <div style={{ padding: '0 16px 12px', fontSize: '12px', color: '#64748b' }}>
+                                    + {gastosPorCategoria.length - 3} categoría(s) más registradas.
+                                </div>
+                            )}
                         </div>
+                        )}
 
-                        <div
-                            className="adm-kpi-card"
-                            onClick={() => setTabActiva('gastos')}
-                            style={{ cursor: 'pointer' }}
-                            title="Ver margen general"
-                        >
-                            <span className="adm-kpi-sub">Margen Operativo</span>
-                            <div className="adm-kpi-value" style={{ color: margenGlobal >= 0 ? '#0284c7' : '#dc2626' }}>
-                                {margenGlobal < 0 ? '-' : ''}${Math.abs(margenGlobal).toLocaleString('es-CL')}
+                        {/* COLUMNA 2: INGRESOS POR CONTRATO */}
+                        <div className="adm-profit-card">
+                            <div className="adm-profit-header">
+                                <div className="adm-profit-title-box">
+                                    <h3>Ingresos por contrato</h3>
+                                    <p>Los 5 contratos que más facturan en el período.</p>
+                                </div>
                             </div>
-                            <span className="adm-kpi-foot">Balance general del período</span>
+                            {ingresosPorContrato.length === 0 ? (
+                                <div style={{
+                                    padding: '32px 16px',
+                                    textAlign: 'center',
+                                    color: '#64748b',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px'
+                                }}>
+                                    <strong style={{ fontSize: '13px', color: modoNoche ? '#f8fafc' : '#0f172a' }}>
+                                        Sin partes valorizados
+                                    </strong>
+                                    <span style={{ fontSize: '12px' }}>No hay facturación proyectada para este período.</span>
+                                </div>
+                            ) : (
+                                <div className="adm-table-wrap" style={{ overflowX: 'visible', margin: '0 16px 16px' }}>
+                                    <table className="adm-table" style={{ minWidth: 0 }}>
+                                        <thead>
+                                            <tr>
+                                                <th>Contrato</th>
+                                                <th style={{ textAlign: 'right' }}>Horas</th>
+                                                <th style={{ textAlign: 'right' }}>Ingreso</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {ingresosPorContrato.map((c) => (
+                                                <tr key={c.nombre}>
+                                                    <td>
+                                                        <strong>{c.nombre}</strong>
+                                                        <div className="adm-fleet-type">{c.cliente}</div>
+                                                    </td>
+                                                    <td style={{ textAlign: 'right' }}>{c.horas.toFixed(1)} h</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: '800', color: '#16a34a' }}>{formatoCLP(c.ingreso)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     <div className="adm-profit-card" style={{ marginBottom: '24px' }}>
                         <div className="adm-profit-header">
                             <div className="adm-profit-title-box">
-                                <span className="adm-kpi-sub"></span>
                                 <h3>Disponibilidad proyectada de la flota</h3>
-                                <p>Cruce entre contratos vigentes y estado de mantención técnica.</p>
+                                <p>{maquinasLibres.length} de {maquinarias.length} equipos disponibles al {formatoFechaCL(fechaProyeccion)}.</p>
                             </div>
 
                             <div className="adm-period-controls">
@@ -1318,13 +1596,32 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     onChange={(e) => handleCambioRango(e.target.value)}
                                     className="adm-select-period"
                                 >
-                                    <option value={0}>Hoy ({fechaHoy})</option>
-                                    <option value={7}>En 7 Días ({calcularFechaFutura(7)})</option>
-                                    <option value={14}>En 14 Días ({calcularFechaFutura(14)})</option>
-                                    <option value={21}>En 21 Días ({calcularFechaFutura(21)})</option>
-                                    <option value={30}>En 30 Días ({calcularFechaFutura(30)})</option>
+                                    <option value={0}>Hoy ({formatoFechaCL(fechaHoy)})</option>
+                                    <option value={7}>En 7 días ({formatoFechaCL(calcularFechaFutura(7))})</option>
+                                    <option value={14}>En 14 días ({formatoFechaCL(calcularFechaFutura(14))})</option>
+                                    <option value={21}>En 21 días ({formatoFechaCL(calcularFechaFutura(21))})</option>
+                                    <option value={30}>En 30 días ({formatoFechaCL(calcularFechaFutura(30))})</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '0 16px 12px' }}>
+                            {[
+                                ['todos', 'Todas', estadoFlotaProyectada.length],
+                                ['libres', 'Disponibles', maquinasLibres.length],
+                                ['ocupadas', 'En contrato', estadoFlotaProyectada.filter(m => m.ocupadaPorContrato).length],
+                                ['taller', 'En taller', estadoFlotaProyectada.filter(m => m.enMantencionOTaller).length],
+                            ].map(([clave, texto, n]) => (
+                                <button
+                                    key={clave}
+                                    type="button"
+                                    className={filtroDisponibilidadTabla === clave ? 'adm-btn-primary' : 'adm-btn-secondary'}
+                                    style={{ padding: '5px 12px', fontSize: '12px' }}
+                                    onClick={() => setFiltroDisponibilidadTabla(clave)}
+                                >
+                                    {texto} ({n})
+                                </button>
+                            ))}
                         </div>
 
                         <div className="adm-table-wrap">
@@ -1332,11 +1629,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 <thead>
                                     <tr>
                                         <th>Maquinaria</th>
-                                        <th>Tipo</th>
-                                        <th>Estado Técnico</th>
-                                        <th style={{ textAlign: 'center' }}>Condición al {fechaProyeccion}</th>
+                                        <th style={{ textAlign: 'center' }}>Condición al {formatoFechaCL(fechaProyeccion)}</th>
                                         <th>Asignación Actual</th>
-                                        <th style={{ textAlign: 'right' }}>Tarifa Referencial</th>
+                                        <th style={{ textAlign: 'right' }}>Tarifa</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1349,14 +1644,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                         <strong style={{ textTransform: 'capitalize' }}>
                                                             {m.marca} {m.modelo}
                                                         </strong>
+                                                        <div className="adm-fleet-type">{m.tipo}</div>
                                                     </div>
                                                 </div>
-                                            </td>
-                                            <td><span className="adm-tag">{m.tipo}</span></td>
-                                            <td>
-                                                <span className={m.enMantencionOTaller ? 'adm-badge-red' : 'adm-tag'}>
-                                                    {m.estado || 'Operativa'}
-                                                </span>
                                             </td>
                                             <td style={{ textAlign: 'center' }}>
                                                 {m.enMantencionOTaller ? (
@@ -1374,17 +1664,14 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                         return <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '12px' }}>Sin asignación</span>;
                                                     }
 
-                                                    const nombreCto = c.nombre_contrato || `Contrato #${c.id_contrato || c.id}`;
+                                                    const nombreCto = nombreContrato(c);
                                                     const clienteNombre = m.clienteMandante || c.cliente_nombre || c.cliente || '';
 
                                                     return (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                            {/* 1. Solo Nombre o Sector del Contrato */}
                                                             <span style={{ fontWeight: '800', color: '#0284c7', fontSize: '13px', textTransform: 'uppercase' }}>
                                                                 {nombreCto}
                                                             </span>
-
-                                                            {/* 2. Cliente asignado abajo */}
                                                             {clienteNombre && (
                                                                 <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '600' }}>
                                                                     {clienteNombre}
@@ -1395,79 +1682,98 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                 })()}
                                             </td>
                                             <td style={{ textAlign: 'right', fontWeight: '700', fontFamily: 'monospace' }}>
-                                                ${parseInt(m.tarifaHora, 10).toLocaleString('es-CL')}/h
+                                                {m.contratoActivoEnFecha ? `$${parseInt(m.tarifaHora, 10).toLocaleString('es-CL')}/h` : '—'}
                                             </td>
                                         </tr>
                                     ))}
                                     {flotaFiltrada.length === 0 && (
                                         <tr>
-                                            <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                                                No hay maquinarias registradas.
+                                            <td colSpan="4" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                                                No hay maquinarias en esta categoría.
                                             </td>
                                         </tr>
                                     )}
                                 </tbody>
                             </table>
                         </div>
+
                     </div>
 
-                    <div className="adm-card">
+                    <div className="adm-card" id="seccion-mantenciones" style={{ scrollMarginTop: '16px' }}>
                         <div className="adm-card-head">
                             <div>
-                                <h3 className="adm-card-title">Control Preventivo y Mantenimiento de Flota</h3>
-                                <p className="adm-card-sub">Monitoreo de horómetros acumulados y pautas técnicas de servicio (500h / 1.000h).</p>
+                                <h3 className="adm-card-title">Mantenciones pendientes y próximas</h3>
+                                <p className="adm-card-sub">Solo equipos que requieren mantención o están cerca de su pauta (500h / 1.000h).</p>
                             </div>
-                            <span className="adm-nav-badge">{maquinarias.length} máquinas en total</span>
+                            <span className="adm-nav-badge">{maquinasConAlerta.length} de {maquinarias.length} máquinas</span>
                         </div>
 
-                        <div className="adm-table-wrap">
-                            <table className="adm-table">
-                                <thead>
-                                    <tr>
-                                        <th>Máquina</th>
-                                        <th>Tipo</th>
-                                        <th>Horómetro Acumulado</th>
-                                        <th>Próxima Pauta</th>
-                                        <th>Horas Restantes</th>
-                                        <th style={{ textAlign: 'center' }}>Condición Técnica</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {analisisMantenciones.map((m) => (
-                                        <tr key={m.id_maquina}>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span className="adm-fleet-badge">{m.patente}</span>
-                                                    <div>
-                                                        <strong style={{ textTransform: 'capitalize' }}>
-                                                            {m.marca} {m.modelo}
-                                                        </strong>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td><span className="adm-tag">{m.tipo}</span></td>
-                                            <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '800', color: '#0f172a' }}>
-                                                {m.horometroNum.toFixed(1)} hrs
-                                            </td>
-                                            <td style={{ fontWeight: '700' }}>
-                                                Pauta de {m.proximaPauta} hrs
-                                            </td>
-                                            <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '800', color: m.horasRestantes <= 50 ? '#dc2626' : '#16a34a' }}>
-                                                Faltan {m.horasRestantes} hrs
-                                            </td>
-                                            <td style={{ textAlign: 'center' }}>
-                                                {m.nivelAlerta === 'MANTENCIÓN_PENDIENTE' ? (
-                                                    <span className="adm-badge-red">MANTENCIÓN PENDIENTE</span>
-                                                ) : m.nivelAlerta === 'PRÓXIMA_MANTENCIÓN' ? (
-                                                    <span className="adm-badge-amber">PRÓXIMA MANTENCIÓN</span>
-                                                ) : (
-                                                    <span className="adm-badge-green">OPERATIVA</span>
-                                                )}
-                                            </td>
+                        {maquinasConAlerta.length === 0 ? (
+                            <p className="adm-card-sub" style={{ padding: '8px 16px 16px' }}>
+                                Ningún equipo requiere mantención ni está cerca de su pauta.
+                            </p>
+                        ) : (
+                            <div className="adm-table-wrap">
+                                <table className="adm-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Máquina</th>
+                                            <th>Horómetro Acumulado</th>
+                                            <th>Próxima Pauta</th>
+                                            <th>Horas Restantes</th>
+                                            <th style={{ textAlign: 'center' }}>Condición Técnica</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {[...maquinasConAlerta]
+                                            .sort((x, y) => (y.nivelAlerta === 'MANTENCIÓN_PENDIENTE') - (x.nivelAlerta === 'MANTENCIÓN_PENDIENTE'))
+                                            .slice(0, 5)
+                                            .map((m) => (
+                                                <tr key={m.id_maquina}>
+                                                    <td>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span className="adm-fleet-badge">{m.patente}</span>
+                                                            <div>
+                                                                <strong style={{ textTransform: 'capitalize' }}>
+                                                                    {m.marca} {m.modelo}
+                                                                </strong>
+                                                                <div className="adm-fleet-type">{m.tipo}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '800' }}>
+                                                        {m.horometroNum.toFixed(1)} hrs
+                                                    </td>
+                                                    <td style={{ fontWeight: '700' }}>
+                                                        Pauta de {m.proximaPauta} hrs
+                                                    </td>
+                                                    <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '800', color: m.horasRestantes <= 50 ? '#dc2626' : '#16a34a' }}>
+                                                        Faltan {m.horasRestantes} hrs
+                                                    </td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        {m.nivelAlerta === 'MANTENCIÓN_PENDIENTE' ? (
+                                                            <span className="adm-badge-red">MANTENCIÓN PENDIENTE</span>
+                                                        ) : (
+                                                            <span className="adm-badge-amber">PRÓXIMA MANTENCIÓN</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        <div style={{ textAlign: 'center', padding: '12px 16px 16px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setTabActiva('maquinarias')}
+                                style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
+                            >
+                                {maquinasConAlerta.length > 5
+                                    ? `Ver más detalles (+${maquinasConAlerta.length - 5} con alerta, ${maquinarias.length} en total) →`
+                                    : `Ver más detalles de las ${maquinarias.length} máquinas →`}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1605,6 +1911,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </div>
                                 </div>
 
+                                {erroresCli.general && (
+                                    <div className="adm-alert-fail" style={{ marginTop: '16px' }}>{erroresCli.general}</div>
+                                )}
                                 <div className="adm-form-actions" style={{ marginTop: '20px' }}>
                                     <button type="submit" className="adm-btn-submit">
                                         {editandoCliId ? 'Guardar Cambios' : 'Guardar Cliente'}
@@ -1772,7 +2081,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                             }}
                                                             title={
                                                                 contratoActivo
-                                                                    ? `Asignada a ${contratoActivo.cliente_nombre || 'Cliente'} (#CTO-${contratoActivo.id_contrato || contratoActivo.id})`
+                                                                    ? `Asignada a ${contratoActivo.cliente_nombre || 'Cliente'} (${nombreContrato(contratoActivo)})`
                                                                     : 'Disponible'
                                                             }
                                                         >
@@ -1830,14 +2139,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             <tr key={c.id_contrato || c.id}>
                                                 <td>
                                                     <div className="contrato-cell-flex">
-                                                        {c.nombre_contrato ? (
-                                                            <>
-                                                                <span className="contrato-nombre-texto">{c.nombre_contrato}</span>
-                                                                <span className="id-contrato-code">#CTO-{c.id_contrato || c.id}</span>
-                                                            </>
-                                                        ) : (
-                                                            <strong className="contrato-nombre-texto">#CTO-{c.id_contrato || c.id}</strong>
-                                                        )}
+                                                        <span className="contrato-nombre-texto">{nombreContrato(c)}</span>
                                                     </div>
                                                 </td>
                                                 <td>
@@ -2026,10 +2328,10 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             value={formMaq.estado}
                                             onChange={e => setFormMaq({ ...formMaq, estado: e.target.value })}
                                         >
-                                            <option value="Disponible">Disponible</option>
-                                            <option value="En Faena">En Faena</option>
-                                            <option value="En Taller">En Taller</option>
-                                            <option value="Requiere Mantención">Requiere Mantención</option>
+                                            <option value="OPERATIVA">Operativa (disponible)</option>
+                                            <option value="EN FAENA">En faena</option>
+                                            <option value="EN TALLER">En taller</option>
+                                            <option value="REQUIERE MANTENCIÓN">Requiere mantención</option>
                                         </select>
                                     </div>
                                 </div>
@@ -2053,6 +2355,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </div>
                                 </div>
 
+                                {erroresMaq.general && (
+                                    <div className="adm-alert-fail" style={{ marginTop: '16px' }}>{erroresMaq.general}</div>
+                                )}
                                 <div className="adm-form-actions" style={{ marginTop: '20px' }}>
                                     <button type="submit" className="adm-btn-submit">
                                         {editandoMaqId ? 'Guardar Cambios' : 'Guardar Maquinaria'}
@@ -2222,18 +2527,24 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
                                 <div className="adm-grid-2" style={{ marginTop: '14px' }}>
                                     <div className="adm-field">
-                                        <label>Cuenta de Usuario (Opcional)</label>
-                                        <select
-                                            value={formOp.id_usuario}
-                                            onChange={e => setFormOp({ ...formOp, id_usuario: e.target.value })}
-                                        >
-                                            <option value="">Seleccione cuenta de acceso...</option>
-                                            {usuariosDisponibles.map(u => (
-                                                <option key={u.id_usuario} value={u.id_usuario}>
-                                                    {u.nombre} {u.apellido || ''} ({u.rut})
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <label>{editandoOpId ? 'Nueva contraseña (opcional)' : 'Contraseña de acceso *'}</label>
+                                        <input
+                                            type="text"
+                                            autoComplete="off"
+                                            placeholder={editandoOpId ? 'Dejar vacío para no cambiarla' : 'Mínimo 6 caracteres'}
+                                            value={formOp.password}
+                                            onChange={e => handleCambioOp('password', e.target.value)}
+                                            style={{ borderColor: erroresOp.password ? '#dc2626' : '' }}
+                                        />
+                                        {erroresOp.password ? (
+                                            <span style={{ color: '#dc2626', fontSize: '11px', fontWeight: '700', marginTop: '4px', display: 'block' }}>
+                                                {erroresOp.password}
+                                            </span>
+                                        ) : (
+                                            <span style={{ color: '#64748b', fontSize: '10px', marginTop: '2px', display: 'block' }}>
+                                                El operador ingresa al sistema con su RUT y esta contraseña.
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="adm-field">
                                         <label>Fecha Vencimiento Licencia</label>
@@ -2241,8 +2552,14 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             type="date"
                                             min={fechaHoy}
                                             value={formOp.fecha_vencimiento_licencia}
-                                            onChange={e => setFormOp({ ...formOp, fecha_vencimiento_licencia: e.target.value })}
+                                            onChange={e => { setFormOp({ ...formOp, fecha_vencimiento_licencia: e.target.value }); setErroresOp(prev => ({ ...prev, fecha_vencimiento_licencia: null })); }}
+                                            style={{ borderColor: erroresOp.fecha_vencimiento_licencia ? '#dc2626' : '' }}
                                         />
+                                        {erroresOp.fecha_vencimiento_licencia && (
+                                            <span style={{ color: '#dc2626', fontSize: '11px', fontWeight: '700', marginTop: '4px', display: 'block' }}>
+                                                {erroresOp.fecha_vencimiento_licencia}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 
@@ -2294,6 +2611,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </label>
                                 </div>
 
+                                {erroresOp.general && (
+                                    <div className="adm-alert-fail" style={{ marginTop: '16px' }}>{erroresOp.general}</div>
+                                )}
                                 <div className="adm-form-actions" style={{ marginTop: '20px' }}>
                                     <button type="submit" className="adm-btn-submit">
                                         {editandoOpId ? 'Guardar Cambios' : 'Guardar Operador'}
@@ -2431,23 +2751,11 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                             <option value="todos">Todos los contratos</option>
                             {contratos.map(c => (
                                 <option key={c.id_contrato} value={c.id_contrato}>
-                                    Contrato #{c.id_contrato} - {c.cliente_nombre || c.cliente || c.id_cliente?.razon_social || 'Cliente'}
+                                    {nombreContrato(c)} - {c.cliente_nombre || c.cliente || c.id_cliente?.razon_social || 'Cliente'}
                                 </option>
                             ))}
                         </select>
 
-                        <select
-                            value={filtroGastoOperador}
-                            onChange={(e) => setFiltroGastoOperador(e.target.value)}
-                            className="adm-select-period"
-                        >
-                            <option value="todos">Todos los usuarios</option>
-                            {usuariosDisponibles.map(u => (
-                                <option key={u.id_usuario} value={u.id_usuario}>
-                                    {u.nombre} {u.apellido || ''} ({u.rut})
-                                </option>
-                            ))}
-                        </select>
                     </div>
 
                     {mostrarModalGasto && (
@@ -2517,7 +2825,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             <option value="">Sin Contrato Asociado</option>
                                             {contratos.map(c => (
                                                 <option key={c.id_contrato} value={c.id_contrato}>
-                                                    Contrato #{c.id_contrato} ({c.cliente_nombre || c.cliente || c.id_cliente?.razon_social || 'Cliente'})
+                                                    {nombreContrato(c)} ({c.cliente_nombre || c.cliente || c.id_cliente?.razon_social || 'Cliente'})
                                                 </option>
                                             ))}
                                         </select>
@@ -2577,6 +2885,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     )}
                                 </div>
 
+                                {erroresGasto.general && (
+                                    <div className="adm-alert-fail" style={{ marginTop: '16px' }}>{erroresGasto.general}</div>
+                                )}
                                 <div className="adm-form-actions" style={{ marginTop: '20px' }}>
                                     <button type="submit" className="adm-btn-submit">
                                         {editandoGastoId ? 'Guardar Cambios' : 'Guardar Gasto'}
@@ -2599,6 +2910,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         <th>Comprobante</th>
                                         <th>Documento</th>
                                         <th>Maquinaria</th>
+                                        <th>Contrato</th>
                                         <th style={{ textAlign: 'right' }}>Monto ($CLP)</th>
                                         <th style={{ textAlign: 'center', width: '130px' }}>Acciones</th>
                                     </tr>
@@ -2610,7 +2922,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
                                         return (
                                             <tr key={g.id_gasto}>
-                                                <td>{g.fecha}</td>
+                                                <td>{formatoFechaCL(g.fecha)}</td>
                                                 <td><span className="adm-tag">{g.categoria_gasto}</span></td>
                                                 <td><span className="adm-code-tag">{g.numero_comprobante || 'S/N'}</span></td>
                                                 <td>
@@ -2639,6 +2951,11 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                     ) : (
                                                         `Maquinaria ID #${g.id_maquina}`
                                                     )}
+                                                </td>
+                                                <td>
+                                                    {g.contrato_nombre
+                                                        ? <strong>{g.contrato_nombre}</strong>
+                                                        : <span style={{ fontSize: '11px', color: '#94a3b8' }}>Gasto general</span>}
                                                 </td>
                                                 <td style={{ textAlign: 'right', fontWeight: '900', color: '#dc2626' }}>
                                                     ${parseInt(g.monto, 10).toLocaleString('es-CL')}
@@ -2700,17 +3017,17 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 <tbody>
                                     {reportes.map(r => {
                                         const maq = maquinarias.find(m => m.id_maquina === r.id_maquina || m.id === r.id_maquina);
-                                        const cont = contratos.find(c => c.id_contrato === r.id_contrato || (c.id_maquina === r.id_maquina && (c.estado_contrato || '').toLowerCase() === 'activo'));
-                                        const tarifa = r.contrato_tarifa || r.tarifa_aplicada || cont?.tarifa_hora || 28000;
+                                        const tieneContrato = Boolean(r.id_contrato);
                                         const horas = parseFloat(r.horas_trabajadas) || 0;
-                                        const ingresoTurno = r.ingreso_estimado || (horas * tarifa);
-                                        const mandante = r.cliente_nombre || cont?.cliente_nombre || cont?.id_cliente?.razon_social || 'General';
+                                        const tarifa = parseFloat(r.tarifa_hora) || 0;
+                                        const ingresoTurno = parseFloat(r.ingreso_estimado) || 0;
+                                        const litros = parseFloat(r.combustible_litros) || 0;
 
                                         return (
                                             <tr key={r.id_report}>
                                                 <td>#{r.id_report}</td>
                                                 <td style={{ whiteSpace: 'nowrap', fontWeight: '700', fontFamily: 'Consolas, monospace' }}>
-                                                    {r.fecha}
+                                                    {formatoFechaCL(r.fecha)}
                                                 </td>
                                                 <td>
                                                     <span className="adm-fleet-badge">
@@ -2719,22 +3036,29 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                     <div className="adm-fleet-type">{maq?.tipo || ''}</div>
                                                 </td>
                                                 <td>
-                                                    <strong>{mandante}</strong>
-                                                    <div className="adm-fleet-type">
-                                                        {cont ? `Contrato #${cont.id_contrato}` : 'Tarifa estándar'}
-                                                    </div>
+                                                    {tieneContrato ? (
+                                                        <>
+                                                            <strong>{r.contrato_nombre || 'Contrato'}</strong>
+                                                            <div className="adm-fleet-type">{r.cliente_nombre || ''}</div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <strong style={{ color: '#94a3b8' }}>Sin contrato</strong>
+                                                            <div className="adm-fleet-type">Parte anterior al control por contrato</div>
+                                                        </>
+                                                    )}
                                                 </td>
                                                 <td style={{ textAlign: 'right', fontWeight: '700' }}>
-                                                    ${parseInt(tarifa, 10).toLocaleString('es-CL')}/h
+                                                    {tarifa > 0 ? `${formatoCLP(tarifa)}/h` : '—'}
                                                 </td>
                                                 <td>{r.horometro_inicial} hrs - {r.horometro_final} hrs</td>
                                                 <td style={{ textAlign: 'right', fontWeight: '800', color: '#b45309' }}>
                                                     {horas.toFixed(1)} hrs
                                                 </td>
-                                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#16a34a' }}>
-                                                    ${parseInt(ingresoTurno, 10).toLocaleString('es-CL')}
+                                                <td style={{ textAlign: 'right', fontWeight: '900', color: tieneContrato ? '#16a34a' : '#94a3b8' }}>
+                                                    {tieneContrato ? formatoCLP(ingresoTurno) : '—'}
                                                 </td>
-                                                <td>{r.combustible_litros ? `${r.combustible_litros} L` : '0 L'}</td>
+                                                <td>{litros > 0 ? `${litros} L` : 'Sin carga'}</td>
                                                 <td>
                                                     {r.firmado ? (
                                                         <span className="adm-badge-green">Firmado</span>

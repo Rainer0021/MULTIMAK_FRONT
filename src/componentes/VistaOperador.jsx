@@ -16,6 +16,8 @@ const extraerErrorApi = (err, defecto) => {
     return partes.length ? partes.join(' ') : defecto;
 };
 
+const enTaller = (m) => String(m?.estado || '').toUpperCase().includes('TALLER');
+
 export default function VistaOperador({ operador, usuario, modoNoche }) {
     const [contratos, setContratos] = useState([]);
     const [reportesRecientes, setReportesRecientes] = useState([]);
@@ -42,6 +44,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
     const [declaracionSupervisor, setDeclaracionSupervisor] = useState(false);
 
     const canvasRef = useRef(null);
+    const avisoRef = useRef(null);
     const [dibujando, setDibujando] = useState(false);
 
     // Cálculos
@@ -64,7 +67,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         try {
             const [resCon, resRep] = await Promise.all([
                 axios.get('/contratos-operador/').catch(() => ({ data: [] })),
-                axios.get('/reports/').catch(() => axios.get('/report/')).catch(() => ({ data: [] }))
+                axios.get('/reports/', { params: { id_operador: operador?.id_operador || 0 } }).catch(() => ({ data: [] }))
             ]);
 
             const dataCon = Array.isArray(resCon.data) ? resCon.data : [];
@@ -103,7 +106,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         setErrores((prev) => ({ ...prev, idContrato: null, idMaquina: null, horometroFinal: null }));
 
         const c = contratos.find((x) => String(x.id_contrato) === String(nuevoId));
-        const disponibles = c ? c.maquinas.filter((m) => m.estado !== 'EN TALLER') : [];
+        const disponibles = c ? c.maquinas.filter((m) => !enTaller(m)) : [];
         if (disponibles.length === 1) {
             seleccionarMaquina(disponibles[0]);   // una sola máquina: queda elegida
         } else {
@@ -202,13 +205,19 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         setFirmaDibujada(false);
     };
 
+    const irAlAviso = () => {
+        setTimeout(() => avisoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setMensajeExito('');
+        setErrores({});
 
         const nuevosErrores = {};
         if (!operador?.id_operador) {
             setErrores({ general: 'Tu cuenta no está asociada a un operador. Avisa al administrador.' });
+            irAlAviso();
             return;
         }
         if (!idContrato) nuevosErrores.idContrato = 'Selecciona el contrato.';
@@ -219,8 +228,16 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             nuevosErrores.horometroFinal = `Debe ser mayor al inicial (${hInicialNum}).`;
         }
 
-        if (cargoCombustible && (!combustible || parseFloat(combustible) <= 0)) {
-            nuevosErrores.combustible = 'Indica los litros cargados.';
+        if (cargoCombustible) {
+            const litros = parseFloat(combustible);
+            if (!combustible || isNaN(litros) || litros <= 0) {
+                nuevosErrores.combustible = 'Indica los litros cargados (mayor a 0).';
+            } else if (litros > 2000) {
+                nuevosErrores.combustible = 'Revisa los litros: el valor parece excesivo.';
+            }
+        }
+        if (horaEntrada && horaSalida && horaSalida <= horaEntrada) {
+            nuevosErrores.horario = 'La hora de término debe ser posterior a la de inicio.';
         }
 
         if (!declaracionSupervisor) {
@@ -236,7 +253,9 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         }
 
         if (Object.keys(nuevosErrores).length > 0) {
-            setErrores(nuevosErrores);
+            const { general, ...porCampo } = nuevosErrores;
+            setErrores({ ...porCampo, general: 'Revisa los campos marcados en rojo antes de registrar el parte.' });
+            irAlAviso();
             return;
         }
 
@@ -251,7 +270,6 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             hora_salida: horaSalida.length === 5 ? `${horaSalida}:00` : horaSalida,
             horometro_inicial: parseFloat(hInicialNum),
             horometro_final: parseFloat(hFinalNum),
-            horas_trabajadas: Math.round(parseFloat(horasTrabajadasCalculadas)),
             combustible_litros: cargoCombustible ? (parseFloat(combustible) || 0) : 0,
             firmado: true,
         };
@@ -260,6 +278,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             await axios.post('/reports/', payload);
             setMensajeExito('¡Parte diario ingresado con éxito!');
             setErrores({});
+            irAlAviso();
             setHorometroInicial(horometroFinal);
             setHorometroFinal('');
             setCargoCombustible(false);
@@ -269,6 +288,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             cargarDatos();
         } catch (err) {
             setErrores({ general: extraerErrorApi(err, 'Error al enviar el reporte.') });
+            irAlAviso();
         } finally {
             setCargando(false);
         }
@@ -289,9 +309,6 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                     <span className="op-date-val">{formatoFechaCL(fechaHoy)}</span>
                 </div>
             </div>
-
-            {mensajeExito && <div className="op-alert-ok">{mensajeExito}</div>}
-            {errores.general && <div className="op-alert-fail">{errores.general}</div>}
 
             <div className="op-layout-grid">
                 {/* COLUMNA IZQUIERDA: FORMULARIO DIARIO */}
@@ -338,9 +355,9 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                             <option
                                                 key={m.id_maquina}
                                                 value={m.id_maquina}
-                                                disabled={m.estado === 'EN TALLER'}
+                                                disabled={enTaller(m)}
                                             >
-                                                {m.patente} — {m.marca} {m.modelo} ({m.tipo}){m.estado === 'EN TALLER' ? ' — en taller' : ''}
+                                                {m.patente} — {m.marca} {m.modelo} ({m.tipo}){enTaller(m) ? ' — en taller' : ''}
                                             </option>
                                         ))}
                                     </>
@@ -359,7 +376,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                     type="time"
                                     className="op-input"
                                     value={horaEntrada}
-                                    onChange={(e) => setHoraEntrada(e.target.value)}
+                                    onChange={(e) => { setHoraEntrada(e.target.value); setErrores((p) => ({ ...p, horario: null })); }}
                                 />
                             </div>
                             <div className="op-form-section">
@@ -368,10 +385,11 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                     type="time"
                                     className="op-input"
                                     value={horaSalida}
-                                    onChange={(e) => setHoraSalida(e.target.value)}
+                                    onChange={(e) => { setHoraSalida(e.target.value); setErrores((p) => ({ ...p, horario: null })); }}
                                 />
                             </div>
                         </div>
+                        {errores.horario && <span className="op-field-error">{errores.horario}</span>}
 
                         <div className="op-grid-2">
                             <div className="op-form-section">
@@ -423,6 +441,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                     <input
                                         type="number"
                                         step="0.5"
+                                        min="0"
                                         className={`op-input ${errores.combustible ? 'op-input-error' : ''}`}
                                         placeholder="Ej: 45.0"
                                         value={combustible}
@@ -526,6 +545,11 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                         >
                             {cargando ? 'Guardando...' : 'Registrar Parte Diario'}
                         </button>
+
+                        <div ref={avisoRef}>
+                            {errores.general && <div className="op-alert-fail">{errores.general}</div>}
+                            {mensajeExito && <div className="op-alert-ok">{mensajeExito}</div>}
+                        </div>
                     </form>
                 </div>
 

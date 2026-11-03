@@ -497,16 +497,18 @@ export default function VistaContador({ modoNoche }) {
     };
 
     const resumenPorContrato = contratos.map((cont) => {
+        // Solo los partes de ESTE contrato (antes también se mezclaban partes por máquina).
         const reportesAsociados = reportes.filter(
-            (r) => String(r.id_contrato) === String(cont.id_contrato) || String(r.id_maquina) === String(cont.id_maquina)
+            (r) => String(r.id_contrato) === String(cont.id_contrato)
         );
 
         const totalHoras = reportesAsociados.reduce(
             (acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0
         );
 
-        const tarifaBase = cont.tarifa_hora || 28000;
-        const subtotal = totalHoras * tarifaBase;
+        // El servidor valoriza cada parte con la tarifa real de la máquina en el contrato (antes se usaba $28.000 fijo).
+        const subtotal = reportesAsociados.reduce((acc, r) => acc + (parseFloat(r.ingreso_estimado) || 0), 0);
+        const tarifaBase = totalHoras > 0 ? Math.round(subtotal / totalHoras) : 0;
         const clienteObj = clientes.find(c => String(c.id_cliente || c.id) === String(cont.id_cliente));
         const clienteNombre = cont.cliente_nombre || clienteObj?.razon_social || clienteObj?.nombre || `Cliente #${cont.id_cliente}`;
 
@@ -1247,7 +1249,7 @@ export default function VistaContador({ modoNoche }) {
                                     <option value="">Seleccione contrato...</option>
                                     {contratos.map(c => (
                                         <option key={c.id_contrato} value={c.id_contrato}>
-                                            Contrato #{c.id_contrato} - {c.cliente_nombre || 'Cliente'}
+                                            {nombreDeContrato(c)} - {c.cliente_nombre || 'Cliente'}
                                         </option>
                                     ))}
                                 </select>
