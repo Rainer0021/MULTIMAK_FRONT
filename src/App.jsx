@@ -5,6 +5,7 @@ import VistaAdmin from './componentes/VistaAdmin';
 import VistaContador from './componentes/VistaContador';
 import './App.css';
 import './styles/erp-theme.css';
+import axios from './api/axios';
 
 export default function App() {
   const [usuario, setUsuario] = useState(() => {
