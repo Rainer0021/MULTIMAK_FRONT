@@ -1170,7 +1170,16 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
 
         setErroresGasto({});
-        const sesion = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
+
+        // Obtener el ID del usuario de forma robusta (prioriza la prop usuario, respaldado por localStorage)
+        const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
+        const idReal = usuario?.id_usuario || usuario?.id || sesionStorage.id_usuario || sesionStorage.id;
+
+        if (!idReal) {
+            setErroresGasto({ general: 'No se encontró una sesión de usuario válida. Por favor, vuelva a iniciar sesión.' });
+            return;
+        }
+
         const formData = new FormData();
         formData.append('categoria_gasto', formGasto.categoria_gasto);
         formData.append('monto', parseInt(formGasto.monto, 10));
@@ -1178,16 +1187,16 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         formData.append('id_maquina', parseInt(formGasto.id_maquina, 10));
         if (formGasto.id_contrato) formData.append('id_contrato', parseInt(formGasto.id_contrato, 10));
         formData.append('numero_comprobante', formGasto.numero_comprobante.trim() || 'S/N');
-        const idReal = sesion.id_usuario || sesion.id;
         formData.append('id_usuario', idReal);
         if (archivoGasto) formData.append('archivo_comprobante', archivoGasto);
 
         try {
             if (editandoGastoId) {
-                await axios.put(`gastos/${editandoGastoId}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                // El interceptor de axios.js se encarga automáticamente del multipart/form-data
+                await axios.put(`gastos/${editandoGastoId}/`, formData);
                 setMensajeExito('Gasto actualizado correctamente.');
             } else {
-                await axios.post('gastos/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await axios.post('gastos/', formData);
                 setMensajeExito('Gasto registrado correctamente.');
             }
             setMostrarModalGasto(false);
