@@ -44,7 +44,8 @@ export default function App() {
   };
 
   const iniciarSesion = (datos) => {
-    const infoUsuario = datos?.usuario ? datos.usuario : datos;
+    // datos puede ser { token: '...', usuario: { ... } } o directamente el usuario con el token dentro
+    const infoUsuario = datos?.usuario ? { ...datos.usuario, token: datos.token } : datos;
     setUsuario(infoUsuario);
     localStorage.setItem('usuario_multimak', JSON.stringify(infoUsuario));
   };
