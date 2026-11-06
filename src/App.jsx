@@ -5,6 +5,7 @@ import VistaAdmin from './componentes/VistaAdmin';
 import VistaContador from './componentes/VistaContador';
 import './App.css';
 import './styles/erp-theme.css';
+import axios from './api/axios';
 
 
 export default function App() {
@@ -45,9 +46,9 @@ export default function App() {
   };
 
   const iniciarSesion = (datos) => {
-    const infoUsuario = datos?.usuario ? datos.usuario : datos;
-    setUsuario(infoUsuario);
-    localStorage.setItem('usuario_multimak', JSON.stringify(infoUsuario));
+    // 'datos' contiene tanto el token como los datos del usuario devueltos por views.py
+    setUsuario(datos);
+    localStorage.setItem('usuario_multimak', JSON.stringify(datos));
   };
 
   const cerrarSesion = () => {

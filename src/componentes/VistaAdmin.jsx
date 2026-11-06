@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from '../api/axios';
 import '../styles/VistaAdmin.css';
 
+
 const normalizarUrlDocumento = (url) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
@@ -1170,26 +1171,47 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
 
         setErroresGasto({});
-        const sesion = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
-        const formData = new FormData();
-        formData.append('categoria_gasto', formGasto.categoria_gasto);
-        formData.append('monto', parseInt(formGasto.monto, 10));
-        formData.append('fecha', formGasto.fecha);
-        formData.append('id_maquina', parseInt(formGasto.id_maquina, 10));
-        if (formGasto.id_contrato) formData.append('id_contrato', parseInt(formGasto.id_contrato, 10));
-        formData.append('numero_comprobante', formGasto.numero_comprobante.trim() || 'S/N');
-        const idReal = sesion.id_usuario || sesion.id;
-        formData.append('id_usuario', idReal);
-        if (archivoGasto) formData.append('archivo_comprobante', archivoGasto);
+
+        // Obtener el ID del usuario de forma robusta
+        const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
+        const idReal = usuario?.id_usuario || usuario?.id || sesionStorage.id_usuario || sesionStorage.id;
+
+        if (!idReal) {
+            setErroresGasto({ general: 'No se encontró una sesión de usuario válida. Por favor, vuelva a iniciar sesión.' });
+            return;
+        }
 
         try {
+            let urlComprobanteFinal = formGasto.url_comprobante || ''; // Mantiene la anterior si se está editando y no se cambia el archivo
+
+            // Si hay un nuevo archivo seleccionado, lo subimos directamente a S3
+            if (archivoGasto) {
+                urlComprobanteFinal = await subirArchivoAS3(archivoGasto);
+            }
+
+            // Preparamos el payload en formato JSON limpio (ya no se requiere FormData)
+            const payload = {
+                categoria_gasto: formGasto.categoria_gasto,
+                monto: parseInt(formGasto.monto, 10),
+                fecha: formGasto.fecha,
+                id_maquina: parseInt(formGasto.id_maquina, 10),
+                numero_comprobante: formGasto.numero_comprobante.trim() || 'S/N',
+                id_usuario: idReal,
+                url_comprobante: urlComprobanteFinal // Guardamos la URL directa de S3 en la base de datos
+            };
+
+            if (formGasto.id_contrato) {
+                payload.id_contrato = parseInt(formGasto.id_contrato, 10);
+            }
+
             if (editandoGastoId) {
-                await axios.put(`gastos/${editandoGastoId}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await axios.put(`gastos/${editandoGastoId}/`, payload);
                 setMensajeExito('Gasto actualizado correctamente.');
             } else {
-                await axios.post('gastos/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await axios.post('gastos/', payload);
                 setMensajeExito('Gasto registrado correctamente.');
             }
+
             setMostrarModalGasto(false);
             setEditandoGastoId(null);
             setArchivoGasto(null);
