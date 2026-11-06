@@ -25,41 +25,43 @@ export default function InicioSesion({ onLogin }) {
     };
 
     const manejarEnvio = async (e) => {
-        e.preventDefault();
-        if (cargando) return; // evita dobles envíos
-        setError('');
-        setCargando(true);
+    e.preventDefault();
+    if (cargando) return;
+    setError('');
+    setCargando(true);
 
-        const rutFormateado = rut.trim();
-        const claveLimpia = contraseña.trim();
+    const rutFormateado = rut.trim();
+    const claveLimpia = contraseña.trim();
 
-        try {
-            // Una sola petición: el servidor acepta el RUT con o sin puntos y guion
-            // y atiende a todos los roles (administrador, contador y operador).
-            const res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
+    try {
+        const res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
 
-            if (res && res.data && res.data.rol) {
-                onLogin(res.data);
-            } else {
-                setError('Respuesta inesperada del servidor. Intenta nuevamente.');
-            }
-        } catch (err) {
-            if (err.response) {
-                const { status, data } = err.response;
-                if (status === 400 || status === 401) {
-                    setError(data?.error || 'RUT o contraseña incorrectos.');
-                } else {
-                    setError(data?.error || 'Error del servidor. Intenta nuevamente en unos minutos.');
-                }
-            } else if (err.request) {
-                setError('No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.');
-            } else {
-                setError('No se pudo iniciar sesión. Intenta nuevamente.');
-            }
-        } finally {
-            setCargando(false);
+        if (res && res.data && res.data.access) {
+            // Guardamos el token y los datos de usuario en localStorage
+            localStorage.setItem('token_multimak', res.data.access);
+            localStorage.setItem('usuario_multimak', JSON.stringify(res.data));
+
+            onLogin(res.data);
+        } else {
+            setError('Respuesta inesperada del servidor. Intenta nuevamente.');
         }
-    };
+    } catch (err) {
+        if (err.response) {
+            const { status, data } = err.response;
+            if (status === 400 || status === 401) {
+                setError(data?.error || 'RUT o contraseña incorrectos.');
+            } else {
+                setError(data?.error || 'Error del servidor. Intenta nuevamente en unos minutos.');
+            }
+        } else if (err.request) {
+            setError('No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.');
+        } else {
+            setError('No se pudo iniciar sesión. Intenta nuevamente.');
+        }
+    } finally {
+        setCargando(false);
+    }
+};
 
     return (
         <div className="login-container">

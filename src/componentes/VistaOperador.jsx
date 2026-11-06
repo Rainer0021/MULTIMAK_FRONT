@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from '../api/axios';
+import axios from '../api/axios'; // Importa la instancia centralizada que inyecta el token
 import '../styles/VistaOperador.css';
 
 const formatoFechaCL = (iso) => {
