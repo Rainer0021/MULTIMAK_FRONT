@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-// Detecta si estás en tu PC (localhost) o en el servidor desplegado (DuckDNS)
 const baseURL = import.meta.env.VITE_API_URL 
   ? import.meta.env.VITE_API_URL 
   : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -35,14 +34,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Limpiamos la sesión guardada
       localStorage.removeItem('token_multimak');
       localStorage.removeItem('usuario_multimak');
 
-      // Si no estamos en el login, redirigimos inmediatamente
-      if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
-        window.location.href = '/';
-      }
+      // Forzar la recarga o redirección al Login
+      window.location.reload();
     }
     return Promise.reject(error);
   }

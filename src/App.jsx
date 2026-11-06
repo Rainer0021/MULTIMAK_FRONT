@@ -7,11 +7,13 @@ import './App.css';
 import './styles/erp-theme.css';
 import axios from './api/axios';
 
-
 export default function App() {
   const [usuario, setUsuario] = useState(() => {
     try {
+      const token = localStorage.getItem('token_multimak');
       const sesionGuardada = localStorage.getItem('usuario_multimak');
+      // Si no existe el token, cerramos sesión de inmediato
+      if (!token) return null;
       return sesionGuardada ? JSON.parse(sesionGuardada) : null;
     } catch (e) {
       return null;
@@ -27,6 +29,33 @@ export default function App() {
       return false;
     }
   });
+
+  // ESCUCHADOR EN TIEMPO REAL: Detecta si el token se elimina o expira
+  useEffect(() => {
+    const verificarSesion = () => {
+      const token = localStorage.getItem('token_multimak');
+      if (!token) {
+        setUsuario(null);
+        localStorage.removeItem('usuario_multimak');
+      }
+    };
+
+    // 1. Escucha borrados en el LocalStorage entre ventanas/pestañas
+    const handleStorageChange = (e) => {
+      if (e.key === 'token_multimak' && !e.newValue) {
+        verificarSesion();
+      }
+    };
+
+    // 2. Verifica la sesión cada vez que el usuario hace clic o vuelve a la ventana
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', verificarSesion);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', verificarSesion);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('multimak_tema', modoNoche ? 'dark' : 'light');
@@ -46,14 +75,14 @@ export default function App() {
   };
 
   const iniciarSesion = (datos) => {
-    // 'datos' contiene tanto el token como los datos del usuario devueltos por views.py
     setUsuario(datos);
     localStorage.setItem('usuario_multimak', JSON.stringify(datos));
   };
 
   const cerrarSesion = () => {
     setUsuario(null);
-    localStorage.removeItem('usuario_multimak');   // solo la sesión: se conserva el modo día/noche
+    localStorage.removeItem('token_multimak');
+    localStorage.removeItem('usuario_multimak');
   };
 
   const rolCrudo = (
@@ -68,7 +97,8 @@ export default function App() {
   const esOperador = rolCrudo.includes('operador') || rolCrudo.includes('chofer');
   const esContador = rolCrudo.includes('contador') || rolCrudo.includes('contab') || rolCrudo.includes('finan');
 
-  if (!usuario) {
+  // Si no hay sesión o no hay token, renderiza la pantalla de Login directamente
+  if (!usuario || !localStorage.getItem('token_multimak')) {
     return <InicioSesion onLogin={iniciarSesion} />;
   }
 
@@ -138,7 +168,6 @@ export default function App() {
         </div>
 
         <div className="app-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* ÚNICO BOTÓN MODO NOCHE / DÍA DE LA APLICACIÓN */}
           <button
             className="app-btn-theme"
             onClick={alternarModoNoche}
@@ -160,7 +189,6 @@ export default function App() {
             <span className="app-btn-theme-label">{modoNoche ? 'Día' : 'Noche'}</span>
           </button>
 
-          {/* FICHA DE USUARIO UNIFICADA (SIN REPETIR ROL) */}
           <div className="app-user-chip" style={{
             display: 'flex',
             alignItems: 'center',
@@ -198,7 +226,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* CONTENEDOR PRINCIPAL FLUIDO A ANCHO COMPLETO */}
       <main style={{ flex: 1, width: '100%', padding: '0', boxSizing: 'border-box' }}>
         {esAdmin && <VistaAdmin modoNoche={modoNoche} />}
         {esOperador && <VistaOperador operador={usuario} modoNoche={modoNoche} />}
