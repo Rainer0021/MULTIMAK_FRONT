@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from '../api/axios'; // Importa la instancia centralizada que inyecta el token
 import '../styles/VistaOperador.css';
+import { subirArchivoAS3 } from '../utils/s3Uploader';
 
 const formatoFechaCL = (iso) => {
     if (!iso) return '';
@@ -270,20 +271,34 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
 
         setCargando(true);
 
-        const payload = {
-            id_operador: operador.id_operador,
-            id_contrato: parseInt(idContrato, 10),
-            id_maquina: parseInt(idMaquina, 10),
-            fecha: fechaHoy,
-            hora_entrada: horaEntrada.length === 5 ? `${horaEntrada}:00` : horaEntrada,
-            hora_salida: horaSalida.length === 5 ? `${horaSalida}:00` : horaSalida,
-            horometro_inicial: parseFloat(hInicialNum),
-            horometro_final: parseFloat(hFinalNum),
-            combustible_litros: cargoCombustible ? (parseFloat(combustible) || 0) : 0,
-            firmado: true,
-        };
-
         try {
+            let urlFirmaS3 = '';
+            
+            // Si el método es foto, subimos la imagen directamente a S3
+            if (metodoCertificacion === 'foto' && archivoFoto) {
+                urlFirmaS3 = await subirArchivoAS3(archivoFoto);
+            } 
+            // Si es digital, convertimos el canvas en un blob (archivo) y lo subimos a S3
+            else if (metodoCertificacion === 'digital' && firmaDibujada && canvasRef.current) {
+                const blobFirma = await new Promise(resolve => canvasRef.current.toBlob(resolve, 'image/png'));
+                const archivoCanvas = new File([blobFirma], `firma_${Date.now()}.png`, { type: 'image/png' });
+                urlFirmaS3 = await subirArchivoAS3(archivoCanvas);
+            }
+
+            const payload = {
+                id_operador: operador.id_operador,
+                id_contrato: parseInt(idContrato, 10),
+                id_maquina: parseInt(idMaquina, 10),
+                fecha: fechaHoy,
+                hora_entrada: horaEntrada.length === 5 ? `${horaEntrada}:00` : horaEntrada,
+                hora_salida: horaSalida.length === 5 ? `${horaSalida}:00` : horaSalida,
+                horometro_inicial: parseFloat(hInicialNum),
+                horometro_final: parseFloat(hFinalNum),
+                combustible_litros: cargoCombustible ? (parseFloat(combustible) || 0) : 0,
+                firmado: true,
+                firma_supervisor: urlFirmaS3 // Guardamos la URL en la BD
+            };
+
             await axios.post('/reports/', payload);
             setMensajeExito('¡Parte diario ingresado con éxito!');
             setErrores({});
@@ -294,6 +309,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             setCombustible('');
             setDeclaracionSupervisor(false);
             limpiarFirma();
+            setArchivoFoto(null);
             cargarDatos();
         } catch (err) {
             setErrores({ general: extraerErrorApi(err, 'Error al enviar el reporte.') });
@@ -302,7 +318,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             setCargando(false);
         }
     };
-
+    
     return (
         <div className={`op-view-container ${modoNoche ? 'dark-mode' : ''}`}>
             {/* ENCABEZADO SUPERIOR */}

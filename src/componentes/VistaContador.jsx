@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../api/axios'; // Importa la instancia centralizada que inyecta el token
 import '../styles/VistaContador.css';
+import { subirArchivoAS3, obtenerUrlLecturaS3 } from '../utils/s3Uploader';
 
 const normalizarUrl = (url) => {
     if (!url) return '';
@@ -419,24 +420,45 @@ export default function VistaContador({ modoNoche }) {
             mostrarNotificacion('Seleccione un archivo PDF o Imagen para cargar.', 'error');
             return;
         }
-        const formData = new FormData();
-        formData.append('tipo_documento', tipoDocEmpresa);
-        formData.append('archivo', archivoDocEmpresa);
-        formData.append('fecha_carga', fechaHoy);
 
         try {
-            await axios.post('/doc-empresa/', formData).catch(() => axios.post('/api/doc-empresa/', formData));
+            // 1. Subimos directamente el archivo a S3 usando nuestro helper
+            const urlS3 = await subirArchivoAS3(archivoDocEmpresa);
+            
+            // 2. Obtenemos el ID del usuario de la sesión actual
+            const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
+            const idRealUsuario = sesionStorage.id_usuario || sesionStorage.id;
+
+            // 3. Preparamos el payload en JSON limpio apuntando a S3
+            const payload = {
+                tipo_documento: tipoDocEmpresa,
+                fecha_emision: fechaHoy,
+                fecha_carga: fechaHoy,
+                url_archivo: urlS3, // URL directa de S3
+                id_usuario: idRealUsuario,
+                activo: true
+            };
+
+            // 4. Guardamos en el backend de Django (usando una sola ruta limpia)
+            await axios.post('doc-empresa/', payload);
+            
             mostrarNotificacion(`Documento [${tipoDocEmpresa}] adjuntado a la Carpeta Tributaria.`);
             setArchivoDocEmpresa(null);
             cargarDatosFinancieros();
         } catch (err) {
-            mostrarNotificacion('Error al cargar el documento empresarial.', 'error');
+            console.error('Error al subir documento de empresa:', err);
+            mostrarNotificacion('Error al cargar el documento empresarial en S3.', 'error');
         }
     };
 
-    const abrirVisor = ({ url, titulo, subtitulo }) => {
+    const abrirVisor = async ({ url, titulo, subtitulo }) => {
         if (!url) return;
-        const urlNorm = normalizarUrl(url);
+        
+        // 1. Pedimos la URL temporal segura
+        const urlSegura = await obtenerUrlLecturaS3(url);
+        
+        // 2. Normalizamos y abrimos
+        const urlNorm = normalizarUrl(urlSegura);
         setModalDoc({
             abierto: true,
             url: urlNorm,
@@ -1095,18 +1117,29 @@ export default function VistaContador({ modoNoche }) {
                                         <td colSpan="4" className="cnt-no-data">No se registran documentos en la carpeta tributaria.</td>
                                     </tr>
                                 ) : (
-                                    docsEmpresa.map((doc, idx) => (
-                                        <tr key={idx}>
-                                            <td className="bold">{doc.tipo_documento}</td>
-                                            <td className="mono">{doc.fecha_carga}</td>
-                                            <td><span className="cnt-badge-hes aprobada">VIGENTE</span></td>
-                                            <td>
-                                                <button className="cnt-btn-s3" onClick={() => abrirVisor({ url: doc.archivo, titulo: doc.tipo_documento })}>
-                                                    Ver Documento
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    docsEmpresa.map((doc, idx) => {
+                                        // Evaluamos de forma segura la propiedad de la URL
+                                        const urlDocumentoFinal = doc.url_archivo || doc.archivo;
+
+                                        return (
+                                            <tr key={doc.id_doc_empresa || idx}>
+                                                <td className="bold">{doc.tipo_documento}</td>
+                                                <td className="mono">{doc.fecha_carga || doc.fecha_emision}</td>
+                                                <td><span className="cnt-badge-hes aprobada">VIGENTE</span></td>
+                                                <td>
+                                                    <button 
+                                                        className="cnt-btn-s3" 
+                                                        onClick={() => abrirVisor({ 
+                                                            url: urlDocumentoFinal, 
+                                                            titulo: doc.tipo_documento 
+                                                        })}
+                                                    >
+                                                        Ver Documento
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>

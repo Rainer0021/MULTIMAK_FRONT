@@ -1,11 +1,11 @@
-import axios from './api/axios'; // Tu instancia de axios configurada
-// Importamos axios limpio para la petición directa a S3 (sin headers de auth de tu backend)
+import api from '../api/axios';
+import axios from 'axios';
 
 export async function subirArchivoAS3(archivo) {
     if (!archivo) return null;
 
     try {
-        // PASO 1: Solicitar la URL presignada a nuestro backend de Django
+        // Pide la URL presignada a Django
         const res = await api.post('generar-url-s3/', {
             nombre_archivo: archivo.name,
             tipo_archivo: archivo.type
@@ -13,19 +13,34 @@ export async function subirArchivoAS3(archivo) {
 
         const { upload_url, file_url } = res.data;
 
-        // PASO 2: Subir el archivo binario directamente a AWS S3
-        // Nota: Aquí se usa axios limpio porque S3 rechaza peticiones con headers de tu backend como Bearer/Token
+        // Sube el archivo directamente a S3 (usando axios limpio sin headers de sesión/token)
         await axios.put(upload_url, archivo, {
             headers: {
                 'Content-Type': archivo.type
             }
         });
 
-        // PASO 3: Retornar la URL final limpia del archivo para guardarla en el modelo (ej: url_comprobante)
+        // Retorna la URL web lista para guardarse en la columna 'url_archivo'
         return file_url;
-
     } catch (error) {
-        console.error('Error al subir el archivo directamente a S3:', error);
-        throw new Error('No se pudo completar la subida del documento.');
+        console.error('Error al subir archivo a S3:', error);
+        throw new Error('No se pudo subir el archivo a la nube.');
+    }
+}
+// src/utils/s3Uploader.js
+// ... (tu función subirArchivoAS3 actual se queda igual)
+
+export async function obtenerUrlLecturaS3(urlGuardada) {
+    if (!urlGuardada) return null;
+    
+    // Si es un archivo local antiguo (no está en AWS), devolvemos la URL tal cual
+    if (!urlGuardada.includes('amazonaws.com')) return urlGuardada; 
+
+    try {
+        const res = await api.post('generar-url-lectura/', { url_archivo: urlGuardada });
+        return res.data.url_lectura;
+    } catch (error) {
+        console.error('Error al obtener URL temporal de lectura:', error);
+        return urlGuardada; // Fallback
     }
 }

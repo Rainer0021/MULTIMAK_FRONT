@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../api/axios'; 
 import '../styles/VistaAdmin.css';
-
+import { subirArchivoAS3, obtenerUrlLecturaS3 } from '../utils/s3Uploader';
 
 const normalizarUrlDocumento = (url) => {
     if (!url) return '';
@@ -360,9 +360,14 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         esPdf: false
     });
 
-    const abrirVisorDoc = ({ url, titulo, subtitulo, folio }) => {
+    const abrirVisorDoc = async ({ url, titulo, subtitulo, folio }) => {
         if (!url) return;
-        const urlNorm = normalizarUrlDocumento(url);
+        
+        // 1. Pedimos la URL temporal segura al backend
+        const urlSegura = await obtenerUrlLecturaS3(url);
+        
+        // 2. Normalizamos y abrimos
+        const urlNorm = normalizarUrlDocumento(urlSegura);
         setModalDoc({
             abierto: true,
             url: urlNorm,
@@ -870,27 +875,40 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         try {
             let idMaqCreada = editandoMaqId;
 
-            // 1. Guardar o actualizar la máquina
+            // 1. Guardar o actualizar la máquina (Payload JSON limpio)
             if (editandoMaqId) {
                 await axios.put(`maquinarias/${editandoMaqId}/`, formMaq);
                 setMensajeExito('Maquinaria actualizada correctamente.');
             } else {
                 const res = await axios.post('maquinarias/', formMaq);
-                idMaqCreada = res.data.id_maquina;
+                idMaqCreada = res.data.id_maquina || res.data.id;
                 setMensajeExito('Maquinaria registrada correctamente.');
             }
 
-            // 2. Auxiliar: PUT si el doc ya existe, POST si es nuevo
-            const guardarOActualizarDoc = async (idMaq, tipoDoc, numDoc, fechaVenc) => {
-                if (!fechaVenc) return;
+            // 2. Auxiliar: Subir a S3 y luego guardar/actualizar en Doc_Maquinaria
+            const procesarDocMaquinariaS3 = async (idMaq, tipoDoc, numDoc, fechaVenc, archivoInput) => {
+                if (!fechaVenc && !archivoInput) return;
+                
                 const docExistente = obtenerDocMaquina(idMaq, tipoDoc, documentosMaq);
+                let urlFinalS3 = docExistente?.url_archivo || '';
+                
+                // Si el usuario subió un archivo nuevo, lo enviamos a S3
+                if (archivoInput) {
+                    urlFinalS3 = await subirArchivoAS3(archivoInput);
+                }
+
+                // Si se configuró fecha pero no hay URL previa ni archivo nuevo, detenemos el guardado
+                if (fechaVenc && !urlFinalS3) {
+                    throw new Error(`Se requiere adjuntar un archivo para el documento ${tipoDoc}`);
+                }
+
                 const payload = {
                     id_maquina: idMaq,
                     tipo_documento: tipoDoc,
                     numero_documento: numDoc,
                     fecha_emision: fechaHoy,
                     fecha_vencimiento: fechaVenc,
-                    url_archivo: docExistente?.url_archivo || ''
+                    url_archivo: urlFinalS3 // <--- URL de S3 en la columna correcta
                 };
 
                 if (docExistente?.id_doc_maquina) {
@@ -900,18 +918,19 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 }
             };
 
-            // 3. Procesar documentos sin duplicar
+            // 3. Procesar documentos
             if (idMaqCreada) {
                 const promesasDocs = [];
-                if (formMaq.fecha_venc_soap) {
-                    promesasDocs.push(guardarOActualizarDoc(idMaqCreada, 'SOAP', `SOAP-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_soap));
+                if (formMaq.fecha_venc_soap || archivosMaq.soap) {
+                    promesasDocs.push(procesarDocMaquinariaS3(idMaqCreada, 'SOAP', `SOAP-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_soap, archivosMaq.soap));
                 }
-                if (formMaq.fecha_venc_rev_tecnica) {
-                    promesasDocs.push(guardarOActualizarDoc(idMaqCreada, 'REVISIÓN TÉCNICA', `REV-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_rev_tecnica));
+                if (formMaq.fecha_venc_rev_tecnica || archivosMaq.rev_tecnica) {
+                    promesasDocs.push(procesarDocMaquinariaS3(idMaqCreada, 'REVISIÓN TÉCNICA', `REV-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_rev_tecnica, archivosMaq.rev_tecnica));
                 }
-                if (formMaq.fecha_venc_permiso) {
-                    promesasDocs.push(guardarOActualizarDoc(idMaqCreada, 'PERMISO DE CIRCULACIÓN', `PERM-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_permiso));
+                if (formMaq.fecha_venc_permiso || archivosMaq.permiso) {
+                    promesasDocs.push(procesarDocMaquinariaS3(idMaqCreada, 'PERMISO DE CIRCULACIÓN', `PERM-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_permiso, archivosMaq.permiso));
                 }
+                
                 if (promesasDocs.length > 0) await Promise.all(promesasDocs);
             }
 
@@ -921,7 +940,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             cargarTodo();
         } catch (error) {
             console.error('Error al guardar maquinaria o documentos:', error);
-            setErroresMaq(extraerErroresApi(error, 'Ocurrió un error al guardar los datos de la maquinaria.', ['patente', 'marca', 'modelo', 'horometro_actual']));
+            setErroresMaq(extraerErroresApi(error, error.message || 'Ocurrió un error al guardar los datos de la maquinaria.', ['patente', 'marca', 'modelo', 'horometro_actual']));
         }
     };
 
@@ -1038,39 +1057,43 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
         setErroresOp({});
 
-        const formData = new FormData();
-        formData.append('nombre', formOp.nombre.trim());
-        formData.append('apellido', formOp.apellido.trim());
-        formData.append('rut', formOp.rut);
-        if (formOp.password) formData.append('password', formOp.password);
-        formData.append('TipoLicencia', listaLicencias.join(', '));
-
-        if (formOp.fecha_vencimiento_licencia) {
-            formData.append('fecha_vencimiento_licencia', formOp.fecha_vencimiento_licencia);
-        }
-        if (archivoLicencia) {
-            formData.append('archivo_licencia', archivoLicencia);
-        }
-
         try {
+            // 1. Mantenemos la URL anterior si editamos, o vacía si es nuevo
+            let urlLicenciaS3 = editandoOpId 
+                ? (operadores.find(o => o.id_operador === editandoOpId)?.archivo_licencia || '') 
+                : '';
+
+            // 2. Si el usuario seleccionó un archivo nuevo, lo subimos directo a S3
+            if (archivoLicencia && typeof archivoLicencia === 'object') {
+                urlLicenciaS3 = await subirArchivoAS3(archivoLicencia);
+            }
+
+            // 3. Preparamos el payload JSON limpio con la URL en texto
+            const payload = {
+                nombre: formOp.nombre.trim(),
+                apellido: formOp.apellido.trim(),
+                rut: formOp.rut,
+                TipoLicencia: listaLicencias.join(', '),
+                fecha_vencimiento_licencia: formOp.fecha_vencimiento_licencia || null,
+                archivo_licencia: urlLicenciaS3 
+            };
+
+            if (formOp.password) payload.password = formOp.password;
+
             if (editandoOpId) {
-                await axios.put(`operadores/${editandoOpId}/`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
+                await axios.put(`operadores/${editandoOpId}/`, payload);
                 setMensajeExito('Operador actualizado correctamente.');
             } else {
-                await axios.post('operadores/', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
+                await axios.post('operadores/', payload);
                 setMensajeExito('Operador registrado correctamente.');
             }
+            
             setMostrarModalOp(false);
             setEditandoOpId(null);
             setArchivoLicencia(null);
             setErroresOp({});
             cargarTodo();
         } catch (err) {
-            // El servidor explica qué falló (RUT repetido, contraseña corta, etc.) y se muestra dentro del formulario.
             setErroresOp(extraerErroresApi(err, 'No se pudo guardar al operador. Intenta nuevamente.',
                 ['nombre', 'apellido', 'rut', 'password', 'TipoLicencia', 'fecha_vencimiento_licencia']));
         }
@@ -1172,7 +1195,6 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
         setErroresGasto({});
 
-        // Obtener el ID del usuario de forma robusta
         const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
         const idReal = usuario?.id_usuario || usuario?.id || sesionStorage.id_usuario || sesionStorage.id;
 
@@ -1182,14 +1204,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
 
         try {
-            let urlComprobanteFinal = formGasto.url_comprobante || ''; // Mantiene la anterior si se está editando y no se cambia el archivo
+            let urlComprobanteFinal = formGasto.url_comprobante || ''; 
 
-            // Si hay un nuevo archivo seleccionado, lo subimos directamente a S3
             if (archivoGasto) {
                 urlComprobanteFinal = await subirArchivoAS3(archivoGasto);
             }
 
-            // Preparamos el payload en formato JSON limpio (ya no se requiere FormData)
             const payload = {
                 categoria_gasto: formGasto.categoria_gasto,
                 monto: parseInt(formGasto.monto, 10),
@@ -1197,7 +1217,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 id_maquina: parseInt(formGasto.id_maquina, 10),
                 numero_comprobante: formGasto.numero_comprobante.trim() || 'S/N',
                 id_usuario: idReal,
-                url_comprobante: urlComprobanteFinal // Guardamos la URL directa de S3 en la base de datos
+                url_comprobante: urlComprobanteFinal 
             };
 
             if (formGasto.id_contrato) {
