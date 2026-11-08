@@ -33,7 +33,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    // Un 401 en el propio login (contraseña mala) NO debe recargar la página:
+    // el formulario tiene que poder mostrar el mensaje de error.
+    const esPeticionLogin = String(error.config?.url || '').includes('login');
+
+    if (error.response && error.response.status === 401 && !esPeticionLogin) {
       localStorage.removeItem('token_multimak');
       localStorage.removeItem('usuario_multimak');
 

@@ -92,7 +92,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                 if (dataCon[0].maquinas.length === 1) seleccionarMaquina(dataCon[0].maquinas[0]);
             }
         } catch (err) {
-            console.error('Error al cargar datos del operador:', err);
+            console.error('No se pudieron cargar tus datos. Recarga la página.', err);
         }
     };
 
@@ -141,7 +141,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
 
         const finalNum = parseFloat(valor);
         if (isNaN(finalNum)) {
-            setErrores((prev) => ({ ...prev, horometroFinal: 'Valor no válido.' }));
+            setErrores((prev) => ({ ...prev, horometroFinal: 'Ingresa un número válido.' }));
             return;
         }
 
@@ -157,7 +157,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         if (dif > 24) {
             setErrores((prev) => ({
                 ...prev,
-                horometroFinal: `Excede el límite de 24 hrs (${dif.toFixed(1)} hrs).`
+                horometroFinal: `No puede superar 24 hrs de trabajo (${dif.toFixed(1)} hrs).`
             }));
             return;
         }
@@ -230,18 +230,18 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             irAlAviso();
             return;
         }
-        if (!idContrato) nuevosErrores.idContrato = 'Selecciona el contrato.';
-        if (idContrato && !idMaquina) nuevosErrores.idMaquina = 'Selecciona la máquina del contrato.';
+        if (!idContrato) nuevosErrores.idContrato = 'Selecciona un contrato.';
+        if (idContrato && !idMaquina) nuevosErrores.idMaquina = 'Selecciona una máquina.';
         if (!horometroFinal) {
             nuevosErrores.horometroFinal = 'Ingresa el horómetro final.';
         } else if (hFinalNum <= hInicialNum) {
-            nuevosErrores.horometroFinal = `Debe ser mayor al inicial (${hInicialNum}).`;
+            nuevosErrores.horometroFinal = `Debe ser mayor al horómetro inicial (${hInicialNum}).`;
         }
 
         if (cargoCombustible) {
             const litros = parseFloat(combustible);
             if (!combustible || isNaN(litros) || litros <= 0) {
-                nuevosErrores.combustible = 'Indica los litros cargados (mayor a 0).';
+                nuevosErrores.combustible = 'Indica los litros cargados (mas de 0).';
             } else if (litros > 2000) {
                 nuevosErrores.combustible = 'Revisa los litros: el valor parece excesivo.';
             }
@@ -251,20 +251,20 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         }
 
         if (!declaracionSupervisor) {
-            nuevosErrores.declaracion = 'El supervisor debe certificar la conformidad.';
+            nuevosErrores.declaracion = 'Falta la conformidad del supervisor.';
         }
 
         if (metodoCertificacion === 'digital' && !firmaDibujada) {
-            nuevosErrores.firma = 'Firma digital requerida en pantalla.';
+            nuevosErrores.firma = 'Falta la firma del supervisor.';
         }
 
         if (metodoCertificacion === 'foto' && !archivoFoto) {
-            nuevosErrores.firma = 'Adjunta la fotografía del comprobante.';
+            nuevosErrores.firma = 'Adjunta la foto del comprobante.';
         }
 
         if (Object.keys(nuevosErrores).length > 0) {
             const { general, ...porCampo } = nuevosErrores;
-            setErrores({ ...porCampo, general: 'Revisa los campos marcados en rojo antes de registrar el parte.' });
+            setErrores({ ...porCampo, general: 'Revisa los campos marcados en rojo.' });
             irAlAviso();
             return;
         }
@@ -300,7 +300,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             };
 
             await axios.post('/reports/', payload);
-            setMensajeExito('¡Parte diario ingresado con éxito!');
+            setMensajeExito('Parte diario registrado correctamente.');
             setErrores({});
             irAlAviso();
             setHorometroInicial(horometroFinal);
@@ -312,7 +312,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             setArchivoFoto(null);
             cargarDatos();
         } catch (err) {
-            setErrores({ general: extraerErrorApi(err, 'Error al enviar el reporte.') });
+            setErrores({ general: extraerErrorApi(err, 'No se pudo registrar el parte. Intenta de nuevo.') });
             irAlAviso();
         } finally {
             setCargando(false);
@@ -324,13 +324,13 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             {/* ENCABEZADO SUPERIOR */}
             <div className="op-top-banner">
                 <div>
-                    <span className="op-pill-tag">PARTE DIARIO DE OPERACIONES • MULTIMAK 360</span>
+                    <span className="op-pill-tag">Parte diario de operaciones • MULTIMAK 360</span>
                     <h1 className="op-main-title">Registro de Turno y Horómetro</h1>
-                    <p className="op-main-desc">Ingrese las horas trabajadas, carga de combustible y firma digital del supervisor en faena.</p>
+                    <p className="op-main-desc">Ingresa las horas trabajadas, carga de combustible y firma digital del supervisor en faena.</p>
                 </div>
                 
                 <div className="op-date-box">
-                    <span className="op-date-label">FECHA ACTUAL</span>
+                    <span className="op-date-label">Fecha actual</span>
                     <span className="op-date-val">{formatoFechaCL(fechaHoy)}</span>
                 </div>
             </div>
@@ -351,7 +351,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                     <option value="">No hay contratos vigentes con máquinas</option>
                                 ) : (
                                     <>
-                                        <option value="">Seleccione el contrato...</option>
+                                        <option value="">Selecciona un contrato...</option>
                                         {contratos.map((c) => (
                                             <option key={c.id_contrato} value={c.id_contrato}>
                                                 {c.nombre} — {c.cliente}
@@ -372,10 +372,10 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                 disabled={!idContrato}
                             >
                                 {!idContrato ? (
-                                    <option value="">Primero seleccione el contrato</option>
+                                    <option value="">Primero selecciona el contrato</option>
                                 ) : (
                                     <>
-                                        {maquinasDelContrato.length > 1 && <option value="">Seleccione la máquina...</option>}
+                                        {maquinasDelContrato.length > 1 && <option value="">Selecciona la máquina...</option>}
                                         {maquinasDelContrato.map((m) => (
                                             <option
                                                 key={m.id_maquina}
@@ -389,14 +389,14 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                 )}
                             </select>
                             {maquinasDelContrato.length > 1 && !idMaquina && (
-                                <span className="op-sub-txt">Este contrato tiene {maquinasDelContrato.length} máquinas: elija la que operó hoy.</span>
+                                <span className="op-sub-txt">Este contrato tiene {maquinasDelContrato.length} máquinas: elige la que operó hoy.</span>
                             )}
                             {errores.idMaquina && <span className="op-field-error">{errores.idMaquina}</span>}
                         </div>
 
                         <div className="op-grid-2">
                             <div className="op-form-section">
-                                <label className="op-label">Hora Inicio Faena</label>
+                                <label className="op-label">Hora Inicio</label>
                                 <input
                                     type="time"
                                     className="op-input"
@@ -405,7 +405,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                 />
                             </div>
                             <div className="op-form-section">
-                                <label className="op-label">Hora Término Faena</label>
+                                <label className="op-label">Hora Término</label>
                                 <input
                                     type="time"
                                     className="op-input"
@@ -445,7 +445,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                         </div>
 
                         <div className="op-summary-box">
-                            <span className="op-summary-label">Horas Computadas en Faena:</span>
+                            <span className="op-summary-label">Horas trabajadas en faena:</span>
                             <span className="op-summary-num">{horasTrabajadasCalculadas} hrs</span>
                         </div>
 
@@ -462,7 +462,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
 
                             {cargoCombustible && (
                                 <div className="op-fuel-expand">
-                                    <label className="op-label">Litros de Diesel Cargados</label>
+                                    <label className="op-label">Litros de Diésel Cargados</label>
                                     <input
                                         type="number"
                                         step="0.5"
@@ -486,7 +486,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
 
                             <div className="op-declaracion-box">
                                 <p className="op-declaracion-texto">
-                                    <strong>DECLARACIÓN OPERATIVA:</strong> Certifico que los horómetros e informes reflejan el trabajo efectivo en obra.
+                                    <strong>Declaración operativa:</strong> Certifico que los horómetros e informes reflejan el trabajo efectivo en obra.
                                 </p>
                                 <label className="op-check-label">
                                     <input
@@ -520,9 +520,9 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                             {metodoCertificacion === 'digital' ? (
                                 <div className="op-canvas-container">
                                     <div className="op-canvas-instructions">
-                                        <span>Firme dentro del recuadro usando el dedo o puntero:</span>
+                                        <span>Firma dentro del recuadro usando el dedo o puntero:</span>
                                         <button type="button" onClick={limpiarFirma} className="op-btn-clear">
-                                            Borrar firma
+                                            Eliminar firma
                                         </button>
                                     </div>
                                     <div className="op-canvas-frame">
@@ -554,7 +554,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                                         <div className="op-upload-content">
                                             <span className="op-upload-icon"></span>
                                             <span className="op-upload-title">
-                                                {archivoFoto ? archivoFoto.name : 'Tomar foto del comprobante firmado'}
+                                                {archivoFoto ? archivoFoto.name : 'Tomar foto del comprobante'}
                                             </span>
                                         </div>
                                     </label>
@@ -568,7 +568,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                             disabled={cargando}
                             className="op-btn-submit"
                         >
-                            {cargando ? 'Guardando...' : 'Registrar Parte Diario'}
+                            {cargando ? 'Guardando...' : 'Registrar parte diario'}
                         </button>
 
                         <div ref={avisoRef}>
@@ -582,7 +582,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                 <div className="op-sidebar">
                     <div className="op-side-card">
                         <div className="op-side-header">
-                            <h3 className="op-side-title">Mis Últimos Partes</h3>
+                            <h3 className="op-side-title">Mis últimos Partes</h3>
                         </div>
 
                         <div className="op-history-list">

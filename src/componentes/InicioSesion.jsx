@@ -3,6 +3,9 @@ import axios from '../api/axios';
 import '../styles/InicioSesion.css';
 
 function formatearRutInput(valor) {
+    // Si tiene letras distintas de K, es un nombre de usuario (superusuario): no se formatea
+    if (/[a-jl-z]/i.test(valor)) return valor;
+
     const limpio = valor.replace(/[^0-9kK]/g, '').toUpperCase();
     if (limpio.length === 0) return '';
     if (limpio.length === 1) return limpio;
@@ -35,6 +38,14 @@ export default function InicioSesion({ onLogin }) {
 
     try {
         const res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
+
+        // Superusuario de Django: se redirige al panel /admin/ del backend
+        if (res && res.data && res.data.es_superusuario) {
+            const base = axios.defaults.baseURL || '';
+            const origen = /^https?:/.test(base) ? new URL(base).origin : window.location.origin;
+            window.location.href = `${origen}/api/admin-sso/?t=${encodeURIComponent(res.data.admin_sso_token)}`;
+            return;
+        }
 
         if (res && res.data && res.data.access) {
             // Guardamos el token y los datos de usuario en localStorage
@@ -76,7 +87,7 @@ export default function InicioSesion({ onLogin }) {
                             MULTIMAK <span>360</span>
                         </div>
                         <div className="login-brand-subtitle">
-                            Arriendo de Maquinaria Pesada & Servicios
+                            Arriendo de Maquinaria Pesada y Servicios
                         </div>
                     </div>
                 </div>
@@ -87,7 +98,7 @@ export default function InicioSesion({ onLogin }) {
                     </h1>
 
                     <p className="login-hero-desc">
-                        Plataforma centralizada para el seguimiento diario de horómetros, administración de pautas de mantenimiento y control de faenas en terreno.
+                        Plataforma para registrar horómetros, gestionar pautas de mantenimiento y controlar faenas en terreno.
                     </p>
                 </div>
 
@@ -101,9 +112,9 @@ export default function InicioSesion({ onLogin }) {
             <div className="login-panel">
                 <div className="login-box">
                     <div className="login-box-header">
-                        <h2 className="login-box-title">Iniciar Sesión</h2>
+                        <h2 className="login-box-title">Iniciar sesión</h2>
                         <p className="login-box-desc">
-                            Ingresa con tu RUT y contraseña para acceder al sistema.
+                            Ingresa tu RUT y contraseña para continuar.
                         </p>
                     </div>
 
@@ -115,8 +126,8 @@ export default function InicioSesion({ onLogin }) {
                             <input
                                 type="text"
                                 required
-                                maxLength={12}
-                                placeholder="11.111.111-1"
+                                maxLength={150}
+                                placeholder="12.345.678-5"
                                 value={rut}
                                 onChange={manejarCambioRut}
                                 className="login-input login-input-rut"
@@ -132,14 +143,14 @@ export default function InicioSesion({ onLogin }) {
                                     onClick={() => setMostrarClave(!mostrarClave)}
                                     className="btn-toggle-pass"
                                 >
-                                    {mostrarClave ? 'Ocultar' : 'Ver'}
+                                    {mostrarClave ? 'Ocultar' : 'Mostrar'}
                                 </button>
                             </div>
                             <input
                                 type={mostrarClave ? 'text' : 'password'}
                                 required
                                 maxLength={40}
-                                placeholder="••••••••"
+                                placeholder="Tu contraseña"
                                 value={contraseña}
                                 onChange={(e) => setContraseña(e.target.value)}
                                 className="login-input"
@@ -151,7 +162,7 @@ export default function InicioSesion({ onLogin }) {
                             disabled={cargando}
                             className="btn-login-submit"
                         >
-                            {cargando ? 'Ingresando...' : 'Entrar'}
+                            {cargando ? 'Iniciando sesión...' : 'Iniciar sesión'}
                         </button>
                     </form>
                 </div>

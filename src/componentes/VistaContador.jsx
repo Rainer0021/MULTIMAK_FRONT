@@ -163,7 +163,7 @@ export default function VistaContador({ modoNoche }) {
             setFacturas(resFact.data?.results || (Array.isArray(resFact.data) ? resFact.data : []));
             setDocsEmpresa(resDocs.data?.results || (Array.isArray(resDocs.data) ? resDocs.data : []));
         } catch (err) {
-            console.error('Error al cargar datos contables:', err);
+            console.error('No se pudieron cargar los datos contables. Recarga la página.', err);
         } finally {
             setCargando(false);
         }
@@ -188,7 +188,7 @@ export default function VistaContador({ modoNoche }) {
 
     const eliminarFilaMaquina = (index) => {
         if (formContrato.maquinas_asignadas.length === 1) {
-            mostrarNotificacion('El contrato debe contemplar al menos una maquinaria.', 'error');
+            mostrarNotificacion('Agrega al menos una maquinaria al contrato.', 'error');
             return;
         }
         setFormContrato(prev => ({
@@ -208,16 +208,16 @@ export default function VistaContador({ modoNoche }) {
         const errores = {};
 
         if (!formContrato.id_cliente) {
-            errores.id_cliente = 'Seleccione un cliente';
+            errores.id_cliente = 'Selecciona un cliente';
         }
 
         if (!formContrato.fecha_inicio) {
-            errores.fecha_inicio = 'Ingrese la fecha de inicio.';
+            errores.fecha_inicio = 'Ingresa la fecha de inicio.';
         } else if (formContrato.fecha_inicio < fechaHoy) {
             errores.fecha_inicio = 'La fecha de inicio no puede ser anterior a hoy.';
         }
         if (!formContrato.fecha_fin) {
-            errores.fecha_fin = 'Ingrese la fecha de término pactada.';
+            errores.fecha_fin = 'Ingresa la fecha de término pactada.';
         } else if (formContrato.fecha_inicio && formContrato.fecha_fin < formContrato.fecha_inicio) {
             errores.fecha_fin = 'La fecha de término no puede ser anterior a la de inicio.';
         }
@@ -225,7 +225,7 @@ export default function VistaContador({ modoNoche }) {
         const erroresMaquinas = formContrato.maquinas_asignadas.map((m, i) => {
             const fila = { id_maquina: '', tarifa_hora: '', detalle: '' };
             if (!m.id_maquina) {
-                fila.id_maquina = 'Seleccione equipo';
+                fila.id_maquina = 'Selecciona un equipo';
             } else {
                 const repetida = formContrato.maquinas_asignadas.some((o, j) => j !== i && String(o.id_maquina) === String(m.id_maquina));
                 const choque = buscarChoqueMaquina(contratos, m.id_maquina, formContrato.fecha_inicio, formContrato.fecha_fin || formContrato.fecha_inicio);
@@ -235,13 +235,13 @@ export default function VistaContador({ modoNoche }) {
                     fila.id_maquina = 'Repetida';
                     fila.detalle = `La máquina ${patente} está repetida en este contrato.`;
                 } else if (choque) {
-                    const hasta = choque.fecha_fin ? formatoFechaCL(choque.fecha_fin) : 'sin término definido';
+                    const hasta = choque.fecha_fin ? formatoFechaCL(choque.fecha_fin) : 'sin término';
                     fila.id_maquina = 'Ocupada';
-                    fila.detalle = `La máquina ${patente} ya está asignada a «${nombreDeContrato(choque)}» (hasta ${hasta}). Elija otra o cambie las fechas.`;
+                    fila.detalle = `La máquina ${patente} ya está asignada a «${nombreDeContrato(choque)}» (hasta ${hasta}). Elige otra o cambie las fechas.`;
                 }
             }
-            if (!m.tarifa_hora) fila.tarifa_hora = 'Ingrese tarifa';
-            else if (parseInt(m.tarifa_hora, 10) <= 0) fila.tarifa_hora = 'La tarifa debe ser mayor a 0';
+            if (!m.tarifa_hora) fila.tarifa_hora = 'Ingresa tarifa';
+            else if (parseInt(m.tarifa_hora, 10) <= 0) fila.tarifa_hora = 'La tarifa debe ser mayor a $0';
             return fila;
         });
 
@@ -249,7 +249,7 @@ export default function VistaContador({ modoNoche }) {
 
         if (Object.keys(errores).length > 0 || hayErrorMaquina) {
             setErroresFormContrato({ ...errores, maquinas: erroresMaquinas });
-            mostrarNotificacion('Revise los datos marcados en el formulario.', 'error');
+            mostrarNotificacion('Revisa los campos marcado en rojo.', 'error');
             return;
         }
 
@@ -289,12 +289,12 @@ export default function VistaContador({ modoNoche }) {
                 }
             }
 
-            mostrarNotificacion('Contrato y maquinarias asignadas con éxito.');
+            mostrarNotificacion('Contrato registrado correctamente.');
             setMostrarFormContrato(false);
             cargarDatosFinancieros();
         } catch (err) {
             console.error("Error guardando contrato:", err);
-            mostrarNotificacion(extraerErrorApi(err, 'Error al guardar el contrato.'), 'error');
+            mostrarNotificacion(extraerErrorApi(err, 'No se pudo guardar el contrato. Intenta nuevamente.'), 'error');
         }
     };
 
@@ -316,13 +316,13 @@ export default function VistaContador({ modoNoche }) {
     const handleProrrogarContrato = async (e) => {
         e.preventDefault();
         if (!modalProrroga.nuevaFechaFin) {
-            mostrarNotificacion('Seleccione la nueva fecha de término.', 'error');
+            mostrarNotificacion('Selecciona la nueva fecha de término.', 'error');
             return;
         }
         const c = contratoEnProrroga();
         if (modalProrroga.nuevaFechaFin < fechaMinProrroga()) {
             const actual = c && c.fecha_fin ? ` (término actual: ${formatoFechaCL(c.fecha_fin)})` : '';
-            mostrarNotificacion(`La nueva fecha debe ser posterior al término actual${actual} y no anterior a hoy.`, 'error');
+            mostrarNotificacion(`La nueva fecha debe ser posterior al término actual${actual}.`, 'error');
             return;
         }
         if (c) {
@@ -338,18 +338,18 @@ export default function VistaContador({ modoNoche }) {
         try {
             const payload = { fecha_fin: modalProrroga.nuevaFechaFin, estado_contrato: 'PRORROGADO' };
             await axios.patch(`/contratos/${modalProrroga.idContrato}/`, payload).catch(() => axios.patch(`/api/contratos/${modalProrroga.idContrato}/`, payload));
-            mostrarNotificacion('Prórroga de contrato guardada correctamente.');
+            mostrarNotificacion('Prórroga guardada correctamente.');
             setModalProrroga({ abierto: false, idContrato: null, nuevaFechaFin: '' });
             cargarDatosFinancieros();
         } catch (err) {
-            mostrarNotificacion(extraerErrorApi(err, 'Error al aplicar la prórroga.'), 'error');
+            mostrarNotificacion(extraerErrorApi(err, 'No se pudo aplicar la prórroga. Intenta nuevamente.'), 'error');
         }
     };
 
     const handleRegistrarHES = async (e) => {
         e.preventDefault();
         if (!modalHes.numeroHes || !modalHes.idContrato) {
-            mostrarNotificacion('Seleccione contrato e ingrese el número de HES.', 'error');
+            mostrarNotificacion('Selecciona contrato e ingresa el número de HES.', 'error');
             return;
         }
         try {
@@ -365,7 +365,7 @@ export default function VistaContador({ modoNoche }) {
             setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA' });
             cargarDatosFinancieros();
         } catch (err) {
-            mostrarNotificacion('Error al registrar la HES.', 'error');
+            mostrarNotificacion('No se pudo registrar la HES. Intenta nuevamente.', 'error');
         }
     };
 
@@ -385,7 +385,7 @@ export default function VistaContador({ modoNoche }) {
     const handleEmitirFactura = async (e) => {
         e.preventDefault();
         if (!modalFactura.folioDTE || !modalFactura.idHes) {
-            mostrarNotificacion('Seleccione una HES aprobada e ingrese el folio DTE.', 'error');
+            mostrarNotificacion('Selecciona una HES aprobada e ingresa el folio DTE.', 'error');
             return;
         }
 
@@ -417,7 +417,7 @@ export default function VistaContador({ modoNoche }) {
     const handleSubirDocEmpresa = async (e) => {
         e.preventDefault();
         if (!archivoDocEmpresa) {
-            mostrarNotificacion('Seleccione un archivo PDF o Imagen para cargar.', 'error');
+            mostrarNotificacion('Selecciona un archivo PDF o una imagen.', 'error');
             return;
         }
 
@@ -442,12 +442,12 @@ export default function VistaContador({ modoNoche }) {
             // 4. Guardamos en el backend de Django (usando una sola ruta limpia)
             await axios.post('doc-empresa/', payload);
             
-            mostrarNotificacion(`Documento [${tipoDocEmpresa}] adjuntado a la Carpeta Tributaria.`);
+            mostrarNotificacion(`Documento [${tipoDocEmpresa}] agregado a la Carpeta Tributaria.`);
             setArchivoDocEmpresa(null);
             cargarDatosFinancieros();
         } catch (err) {
             console.error('Error al subir documento de empresa:', err);
-            mostrarNotificacion('Error al cargar el documento empresarial en S3.', 'error');
+            mostrarNotificacion('No se pudo subir el documento. Intenta nuevamente.', 'error');
         }
     };
 
@@ -586,7 +586,7 @@ export default function VistaContador({ modoNoche }) {
         <div className="cnt-view-container">
             <div className="cnt-top-header">
                 <div>
-                    <span className="cnt-header-tag">DEPARTAMENTO DE FINANZAS • MULTIMAK 360</span>
+                    <span className="cnt-header-tag">Departamento de finanzas • MULTIMAK 360</span>
                     <h1 className="cnt-header-title">Panel Contable y Liquidación de Faena</h1>
                 </div>
                 <button onClick={cargarDatosFinancieros} className="cnt-btn-sync">
@@ -609,7 +609,7 @@ export default function VistaContador({ modoNoche }) {
                 </div>
 
                 <div className="cnt-kpi-card gastos">
-                    <span className="cnt-kpi-sub">Gasto Total Flota</span>
+                    <span className="cnt-kpi-sub">Gasto Total de la Flota</span>
                     <div className="cnt-kpi-value">${totalGastosAcumulados.toLocaleString('es-CL')}</div>
                     <span className="cnt-kpi-foot">Egresos respaldados</span>
                 </div>
@@ -625,7 +625,7 @@ export default function VistaContador({ modoNoche }) {
                 <div className="cnt-kpi-card combustible">
                     <span className="cnt-kpi-sub">Combustible</span>
                     <div className="cnt-kpi-value">${gastosCombustible.toLocaleString('es-CL')}</div>
-                    <span className="cnt-kpi-foot">Diesel cargado</span>
+                    <span className="cnt-kpi-foot">Diésel cargado</span>
                 </div>
 
                 <div className="cnt-kpi-card mantenimiento">
@@ -688,13 +688,13 @@ export default function VistaContador({ modoNoche }) {
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
-                                        <th>CLIENTE / MANDANTE</th>
-                                        <th>EQUIPOS Y TARIFAS ASIGNADAS</th>
-                                        <th>TURNOS</th>
-                                        <th className="right">HORAS EJECUTADAS</th>
-                                        <th className="right">TOTAL ESTIMADO</th>
-                                        <th>ESTADO HES</th>
-                                        <th className="right">ACCIONES</th>
+                                        <th>Cliente / Mandante</th>
+                                        <th>Equipos y tarifas asignadas</th>
+                                        <th>Turnos</th>
+                                        <th className="right">Horas ejecutadas</th>
+                                        <th className="right">Total estimado</th>
+                                        <th>Estado HES</th>
+                                        <th className="right">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -728,7 +728,7 @@ export default function VistaContador({ modoNoche }) {
                                                                 HES N° {hesExistente.numero_hes} ({hesExistente.estado})
                                                             </span>
                                                         ) : (
-                                                            <span className="cnt-badge-hes pendiente">Pendiente HES</span>
+                                                            <span className="cnt-badge-hes pendiente"> HES Pendiente</span>
                                                         )}
                                                     </td>
                                                     <td className="right">
@@ -778,13 +778,13 @@ export default function VistaContador({ modoNoche }) {
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
-                                        <th>FOLIO DTE</th>
-                                        <th>HES VINCULADA</th>
-                                        <th>FECHA EMISIÓN</th>
-                                        <th className="right">MONTO NETO</th>
+                                        <th>Folio DTE</th>
+                                        <th>HES vinculada</th>
+                                        <th>Fecha emisión</th>
+                                        <th className="right">Monto neto</th>
                                         <th className="right">IVA (19%)</th>
-                                        <th className="right">TOTAL ($CLP)</th>
-                                        <th>ESTADO PAGO</th>
+                                        <th className="right">Total ($CLP)</th>
+                                        <th>Estado de pago</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -857,7 +857,7 @@ export default function VistaContador({ modoNoche }) {
                                             value={formContrato.id_cliente}
                                             onChange={(e) => setFormContrato({ ...formContrato, id_cliente: e.target.value })}
                                         >
-                                            <option value="">Seleccione cliente...</option>
+                                            <option value="">Selecciona un cliente...</option>
                                             {clientes.map((c) => (
                                                 <option key={c.id_cliente || c.id} value={c.id_cliente || c.id}>
                                                     {c.razon_social || c.nombre} {c.rut ? `(RUT: ${c.rut})` : ''}
@@ -929,7 +929,7 @@ export default function VistaContador({ modoNoche }) {
                                                             value={item.id_maquina}
                                                             onChange={(e) => handleCambioMaquinaFila(index, 'id_maquina', e.target.value)}
                                                         >
-                                                            <option value="">Seleccione equipo...</option>
+                                                            <option value="">Selecciona un equipo...</option>
                                                             {maquinarias.map((m) => {
                                                                 const idM = m.id_maquina || m.id;
                                                                 const choque = buscarChoqueMaquina(
@@ -973,7 +973,7 @@ export default function VistaContador({ modoNoche }) {
                                                     </div>
                                                     {(errorFila.id_maquina || errorFila.tarifa_hora) && (
                                                         <span className="cnt-error-msg" style={{ marginTop: '-4px', marginBottom: '8px' }}>
-                                                            ! {errorFila.detalle || 'Debe seleccionar el equipo e ingresar la tarifa correspondiente.'}
+                                                            ! {errorFila.detalle || 'Selecciona el equipo e ingresar la tarifa.'}
                                                         </span>
                                                     )}
                                                 </React.Fragment>
@@ -1005,13 +1005,13 @@ export default function VistaContador({ modoNoche }) {
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
-                                        <th>ID / NOMBRE CONTRATO</th>
-                                        <th>CLIENTE / MANDANTE</th>
-                                        <th>EQUIPOS Y TARIFAS VINCULADAS</th>
-                                        <th>INICIO</th>
-                                        <th>TÉRMINO PACTADO</th>
-                                        <th>ESTADO</th>
-                                        <th className="right">ACCIONES</th>
+                                        <th>ID / nombre del contrato</th>
+                                        <th>Cliente / mandante</th>
+                                        <th>Equipos y tarifas vinculadas</th>
+                                        <th>Inicio</th>
+                                        <th>Término pactado</th>
+                                        <th>Estado</th>
+                                        <th className="right">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1105,10 +1105,10 @@ export default function VistaContador({ modoNoche }) {
                         <table className="cnt-table">
                             <thead>
                                 <tr>
-                                    <th>DOCUMENTO</th>
-                                    <th>FECHA DE CARGA</th>
-                                    <th>ESTADO</th>
-                                    <th>ACCIONES</th>
+                                    <th>Documento</th>
+                                    <th>Fecha de carga</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1125,7 +1125,7 @@ export default function VistaContador({ modoNoche }) {
                                             <tr key={doc.id_doc_empresa || idx}>
                                                 <td className="bold">{doc.tipo_documento}</td>
                                                 <td className="mono">{doc.fecha_carga || doc.fecha_emision}</td>
-                                                <td><span className="cnt-badge-hes aprobada">VIGENTE</span></td>
+                                                <td><span className="cnt-badge-hes aprobada">Vigente</span></td>
                                                 <td>
                                                     <button 
                                                         className="cnt-btn-s3" 
@@ -1177,12 +1177,12 @@ export default function VistaContador({ modoNoche }) {
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
-                                        <th>FECHA</th>
-                                        <th>CONCEPTO</th>
-                                        <th>FOLIO / REF</th>
-                                        <th>RESPALDO S3</th>
-                                        <th>MÁQUINA ASOCIADA</th>
-                                        <th className="right">MONTO</th>
+                                        <th>Fecha</th>
+                                        <th>Concepto</th>
+                                        <th>Folio / Ref</th>
+                                        <th>Respaldo</th>
+                                        <th>Máquina asociada</th>
+                                        <th className="right">Monto</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1279,7 +1279,7 @@ export default function VistaContador({ modoNoche }) {
                                     value={modalHes.idContrato}
                                     onChange={(e) => setModalHes({ ...modalHes, idContrato: e.target.value })}
                                 >
-                                    <option value="">Seleccione contrato...</option>
+                                    <option value="">Selecciona contrato...</option>
                                     {contratos.map(c => (
                                         <option key={c.id_contrato} value={c.id_contrato}>
                                             {nombreDeContrato(c)} - {c.cliente_nombre || 'Cliente'}
@@ -1314,9 +1314,9 @@ export default function VistaContador({ modoNoche }) {
                                     value={modalHes.estado}
                                     onChange={(e) => setModalHes({ ...modalHes, estado: e.target.value })}
                                 >
-                                    <option value="APROBADA">APROBADA (Habilita Facturación)</option>
-                                    <option value="PENDIENTE">PENDIENTE (En Revisión)</option>
-                                    <option value="RECHAZADA">RECHAZADA</option>
+                                    <option value="APROBADA">Aprobada (Habilita Facturación)</option>
+                                    <option value="PENDIENTE">Pendiente (En Revisión)</option>
+                                    <option value="RECHAZADA">Rechazada</option>
                                 </select>
                             </div>
 
@@ -1337,12 +1337,12 @@ export default function VistaContador({ modoNoche }) {
                         </div>
                         <form onSubmit={handleEmitirFactura} noValidate className="cnt-modal-body">
                             <div className="cnt-input-group">
-                                <label>HES Aprobada Vincular</label>
+                                <label>HES Aprobada para vincular</label>
                                 <select
                                     value={modalFactura.idHes}
                                     onChange={(e) => setModalFactura({ ...modalFactura, idHes: e.target.value })}
                                 >
-                                    <option value="">Seleccione HES autorizada...</option>
+                                    <option value="">Selecciona HES autorizada...</option>
                                     {hesList.map(h => (
                                         <option key={h.id_hes} value={h.id_hes} disabled={h.estado !== 'APROBADA'}>
                                             HES N° {h.numero_hes} - ({h.total_horas_aprobadas} hrs) [{h.estado}]

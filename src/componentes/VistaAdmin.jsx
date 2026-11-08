@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from '../api/axios'; 
+import axios from '../api/axios';
 import '../styles/VistaAdmin.css';
 import { subirArchivoAS3, obtenerUrlLecturaS3 } from '../utils/s3Uploader';
 
@@ -208,6 +208,14 @@ const diasHasta = (iso) => {
 const textoDias = (n) => `${n} ${n === 1 ? 'día' : 'días'}`;
 // ============================================================================
 
+// Al editar una fila, sube suavemente hasta el formulario (que se abre arriba de la tabla).
+// El pequeño retraso espera a que React termine de dibujar el formulario.
+const irAlFormulario = (idElemento) => {
+    setTimeout(() => {
+        document.getElementById(idElemento)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+};
+
 export default function VistaAdmin({ usuario, modoNoche }) {
     const fechaHoy = hoyLocalISO();
 
@@ -287,8 +295,16 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const [filtroDisponibilidadTabla, setFiltroDisponibilidadTabla] = useState('todos');
 
     const [filtroGastoMaquina, setFiltroGastoMaquina] = useState('todos');
-    const [filtroGastoOperador, setFiltroGastoOperador] = useState('todos');
     const [filtroGastoContrato, setFiltroGastoContrato] = useState('todos');
+    const [filtroGastoCategoria, setFiltroGastoCategoria] = useState('todos');
+    const [gastoDesde, setGastoDesde] = useState('');
+    const [gastoHasta, setGastoHasta] = useState('');
+    const [busquedaParte, setBusquedaParte] = useState('');
+    const [parteDesde, setParteDesde] = useState('');
+    const [parteHasta, setParteHasta] = useState('');
+    const [filtroParteMaquina, setFiltroParteMaquina] = useState('todos');
+    const [filtroParteContrato, setFiltroParteContrato] = useState('todos');
+    const [filtroParteEstado, setFiltroParteEstado] = useState('todos');
     const [documentosMaq, setDocumentosMaq] = useState([]);
 
     // FORMULARIO CLIENTES
@@ -362,10 +378,10 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const abrirVisorDoc = async ({ url, titulo, subtitulo, folio }) => {
         if (!url) return;
-        
+
         // 1. Pedimos la URL temporal segura al backend
         const urlSegura = await obtenerUrlLecturaS3(url);
-        
+
         // 2. Normalizamos y abrimos
         const urlNorm = normalizarUrlDocumento(urlSegura);
         setModalDoc({
@@ -427,7 +443,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             setGastos(resGas.data?.results || (Array.isArray(resGas.data) ? resGas.data : []));
             setContratos(resCont.data?.results || (Array.isArray(resCont.data) ? resCont.data : []));
         } catch (err) {
-            setError('Error al sincronizar los datos con el servidor.');
+            setError('No se pudieron cargar los datos. Recarga la página.');
         } finally {
             setCargando(false);
         }
@@ -635,33 +651,100 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         const comp = (g.numero_comprobante || '').toLowerCase();
         const coincideTexto = cat.includes(t) || comp.includes(t);
 
+        const coincideCategoria = filtroGastoCategoria === 'todos' || g.categoria_gasto === filtroGastoCategoria;
+
+        const fecha = String(g.fecha || '').slice(0, 10);
+        const coincideDesde = !gastoDesde || fecha >= gastoDesde;
+        const coincideHasta = !gastoHasta || fecha <= gastoHasta;
+
         const maqId = g.id_maquina?.id_maquina || g.id_maquina;
         const coincideMaquina = filtroGastoMaquina === 'todos' || String(maqId) === String(filtroGastoMaquina);
-
-        const opId = g.id_usuario?.id_usuario || g.id_usuario;
-        const coincideOperador = filtroGastoOperador === 'todos' || String(opId) === String(filtroGastoOperador);
 
         const contId = g.id_contrato?.id_contrato || g.id_contrato;
         const coincideContrato = filtroGastoContrato === 'todos' || String(contId) === String(filtroGastoContrato);
 
-        return coincideTexto && coincideMaquina && coincideOperador && coincideContrato;
+        return coincideTexto && coincideCategoria && coincideDesde && coincideHasta && coincideMaquina && coincideContrato;
     });
+
+    const hayFiltroGastos = Boolean(
+        busquedaGasto || gastoDesde || gastoHasta ||
+        filtroGastoCategoria !== 'todos' || filtroGastoMaquina !== 'todos' ||
+        filtroGastoContrato !== 'todos'
+    );
+
+    const limpiarFiltrosGastos = () => {
+        setBusquedaGasto('');
+        setGastoDesde('');
+        setGastoHasta('');
+        setFiltroGastoCategoria('todos');
+        setFiltroGastoMaquina('todos');
+        setFiltroGastoContrato('todos');
+    };
+    // ===== FILTROS DE PARTES DIARIOS =====
+    const reportesFiltrados = reportes.filter(r => {
+        const t = busquedaParte.trim().toLowerCase();
+        const maq = maquinarias.find(m => m.id_maquina === r.id_maquina || m.id === r.id_maquina);
+        const textoParte = [
+            r.id_report,
+            maq?.patente,
+            r.maquina_patente,
+            r.contrato_nombre,
+            r.cliente_nombre
+        ].join(' ').toLowerCase();
+        const coincideTexto = !t || textoParte.includes(t);
+
+        const fecha = String(r.fecha || '').slice(0, 10);
+        const coincideDesde = !parteDesde || fecha >= parteDesde;
+        const coincideHasta = !parteHasta || fecha <= parteHasta;
+
+        const maqId = r.id_maquina?.id_maquina || r.id_maquina;
+        const coincideMaquina = filtroParteMaquina === 'todos' || String(maqId) === String(filtroParteMaquina);
+
+        const contId = r.id_contrato?.id_contrato || r.id_contrato;
+        const coincideContrato =
+            filtroParteContrato === 'todos' ||
+            (filtroParteContrato === 'sin' ? !contId : String(contId) === String(filtroParteContrato));
+
+        const coincideEstado =
+            filtroParteEstado === 'todos' ||
+            (filtroParteEstado === 'firmados' ? Boolean(r.firmado) : !r.firmado);
+
+        return coincideTexto && coincideDesde && coincideHasta && coincideMaquina && coincideContrato && coincideEstado;
+    });
+
+    const totalHorasPartes = reportesFiltrados.reduce((acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0);
+    const totalMontoPartes = reportesFiltrados.reduce((acc, r) => acc + (parseFloat(r.ingreso_estimado) || 0), 0);
+    const totalLitrosPartes = reportesFiltrados.reduce((acc, r) => acc + (parseFloat(r.combustible_litros) || 0), 0);
+
+    const hayFiltroPartes = Boolean(
+        busquedaParte || parteDesde || parteHasta ||
+        filtroParteMaquina !== 'todos' || filtroParteContrato !== 'todos' || filtroParteEstado !== 'todos'
+    );
+
+    const limpiarFiltrosPartes = () => {
+        setBusquedaParte('');
+        setParteDesde('');
+        setParteHasta('');
+        setFiltroParteMaquina('todos');
+        setFiltroParteContrato('todos');
+        setFiltroParteEstado('todos');
+    };
 
     const validarCampoCliente = (nombre, valor) => {
         let msg = null;
-        if (nombre === 'razon_social' && !valor.trim()) msg = 'Ingrese la Razón Social o Nombre de la empresa.';
+        if (nombre === 'razon_social' && !valor.trim()) msg = 'Ingresa la razón social o el nombre de la empresa.';
         if (nombre === 'rut') {
-            if (!valor.trim()) msg = 'Ingrese el RUT de la empresa.';
-            else if (!validarRutChileno(valor)) msg = 'RUT inválido (verifique los dígitos ingresados).';
+            if (!valor.trim()) msg = 'Ingresa el RUT de la empresa.';
+            else if (!validarRutChileno(valor)) msg = 'El RUT no es válido. (verifica los dígitos ingresados).';
         }
-        if (nombre === 'giro' && !valor.trim()) msg = 'Ingrese el Giro comercial.';
+        if (nombre === 'giro' && !valor.trim()) msg = 'Ingresa el giro comercial.';
         if (nombre === 'telefono') {
-            if (!valor.trim()) msg = 'Ingrese un número de teléfono de contacto.';
-            else if (!validarTelefonoCL(valor)) msg = 'Teléfono chileno inválido. Ej: +56 9 8765 4321 (móvil) o +56 61 224 1234 (fijo).';
+            if (!valor.trim()) msg = 'Ingresa un número de teléfono de contacto.';
+            else if (!validarTelefonoCL(valor)) msg = 'Teléfono no válido. Ej: +56 9 8765 4321.';
         }
         if (nombre === 'email_contacto') {
-            if (!valor.trim()) msg = 'Ingrese un correo electrónico de contacto.';
-            else if (!/\S+@\S+\.\S+/.test(valor)) msg = 'Formato de correo inválido (ej: contacto@empresa.cl).';
+            if (!valor.trim()) msg = 'Ingresa un correo electrónico de contacto.';
+            else if (!/\S+@\S+\.\S+/.test(valor)) msg = 'Correo no válido Ej: contacto@empresa.cl.';
         }
         return msg;
     };
@@ -688,6 +771,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const abrirEdicionCliente = (cli) => {
         setEditandoCliId(cli.id_cliente || cli.id);
+        irAlFormulario('form-cliente');
 
         let telExtraido = cli.telefono || '';
         let emailExtraido = cli.email_contacto || cli.email || '';
@@ -737,7 +821,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             rut: formCli.rut.trim(),
             razon_social: formCli.razon_social.trim(),
             giro: formCli.giro.trim(),
-            direccion: formCli.direccion.trim() || 'Sin Dirección Registrada',
+            direccion: formCli.direccion.trim() || 'Sin dirección registrada',
             contacto: contactoUnificado
         };
 
@@ -765,7 +849,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     });
                     setErroresCli({ ...erroresServidor, general: erroresServidor.general || 'No se pudo guardar el cliente. Revisa los campos marcados.' });
                 } else {
-                    setErroresCli({ general: `Error del servidor (${err.response.status}).` });
+                    setErroresCli({ general: `El servidor no pudo procesar la solicitud (código ${err.response.status}).` });
                 }
             } else {
                 setErroresCli({ general: 'Error de conexión con el servidor.' });
@@ -777,7 +861,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         const nombreMostrar = cli.razon_social || cli.nombre || `ID #${cli.id_cliente || cli.id}`;
         abrirModalEliminar(
             'Eliminar Cliente',
-            `¿Está seguro de que desea eliminar al cliente "${nombreMostrar}"?`,
+            `¿Eliminar al cliente "${nombreMostrar}"?`,
             async () => {
                 try {
                     await axios.delete(`clientes/${cli.id_cliente || cli.id}/`);
@@ -785,7 +869,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     cargarTodo();
                 } catch (err) {
                     if (err.response && (err.response.status === 400 || err.response.status === 500 || err.response.status === 409)) {
-                        setError(`No se puede eliminar el cliente "${nombreMostrar}" porque posee contratos o registros asociados en el sistema.`);
+                        setError(`No se puede eliminar el cliente "${nombreMostrar}" porque tiene contratos o registros asociados en el sistema.`);
                     } else {
                         setError(`No fue posible eliminar al cliente "${nombreMostrar}".`);
                     }
@@ -798,16 +882,16 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         let msg = null;
         if (nombre === 'patente') {
             if (!valor.trim()) {
-                msg = 'Ingrese la patente del equipo.';
+                msg = 'Ingresa la patente del equipo.';
             } else if (!validarPatenteChilena(valor)) {
-                msg = 'Formato inválido (Ej: AB-CD-12, AB-12-34 o ABC-123).';
+                msg = 'Patente no válida. Ej: AB-CD-12 o ABC-123.';
             }
         }
-        if (nombre === 'marca' && !valor.trim()) msg = 'Ingrese la marca del equipo.';
-        if (nombre === 'modelo' && !valor.trim()) msg = 'Ingrese el modelo del equipo.';
+        if (nombre === 'marca' && !valor.trim()) msg = 'Ingresa la marca del equipo.';
+        if (nombre === 'modelo' && !valor.trim()) msg = 'Ingresa el modelo del equipo.';
         if (nombre === 'horometro_actual') {
-            if (valor === '' || valor === null) msg = 'Ingrese el horómetro actual.';
-            else if (parseFloat(valor) < 0) msg = 'El horómetro no puede ser negativo.';
+            if (valor === '' || valor === null) msg = 'Ingresa el horómetro actual.';
+            else if (parseFloat(valor) < 0) msg = 'El horómetro no puede ser menor a 0.';
         }
         return msg;
     };
@@ -835,6 +919,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const abrirEdicionMaquinaria = (maq) => {
         setEditandoMaqId(maq.id_maquina);
+        irAlFormulario('form-maquinaria');
 
         const docSoapObj = obtenerDocMaquina(maq.id_maquina, 'SOAP', documentosMaq);
         const docRevObj = obtenerDocMaquina(maq.id_maquina, 'REVISI', documentosMaq);
@@ -872,26 +957,51 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
         setErroresMaq({});
 
+        // Si un documento tiene fecha de vencimiento, debe tener archivo (nuevo o ya guardado).
+        // Se revisa ANTES de guardar para no mostrar "guardado" y después un error.
+        const documentosRequeridos = [
+            { clave: 'soap', etiqueta: 'SOAP', tipoDoc: 'SOAP', campoFecha: 'fecha_venc_soap' },
+            { clave: 'rev_tecnica', etiqueta: 'Revisión técnica', tipoDoc: 'REVISIÓN TÉCNICA', campoFecha: 'fecha_venc_rev_tecnica' },
+            { clave: 'permiso', etiqueta: 'Permiso de circulación', tipoDoc: 'PERMISO DE CIRCULACIÓN', campoFecha: 'fecha_venc_permiso' }
+        ];
+        const docsSinArchivo = documentosRequeridos.filter((d) => {
+            if (!formMaq[d.campoFecha]) return false;
+            if (archivosMaq[d.clave]) return false;
+            const existente = editandoMaqId ? obtenerDocMaquina(editandoMaqId, d.tipoDoc, documentosMaq) : null;
+            return !existente?.url_archivo;
+        });
+        if (docsSinArchivo.length > 0) {
+            setErroresMaq({ general: `Falta adjuntar: ${docsSinArchivo.map((d) => d.etiqueta).join(', ')}.` });
+            return;
+        }
+
+        let maquinaGuardada = false;
+
         try {
             let idMaqCreada = editandoMaqId;
+            let mensajeFinal = '';
 
             // 1. Guardar o actualizar la máquina (Payload JSON limpio)
             if (editandoMaqId) {
                 await axios.put(`maquinarias/${editandoMaqId}/`, formMaq);
-                setMensajeExito('Maquinaria actualizada correctamente.');
+                maquinaGuardada = true;
+                mensajeFinal = 'Maquinaria actualizada correctamente.';
             } else {
                 const res = await axios.post('maquinarias/', formMaq);
                 idMaqCreada = res.data.id_maquina || res.data.id;
-                setMensajeExito('Maquinaria registrada correctamente.');
+                maquinaGuardada = true;
+                // Si algo falla después, un nuevo intento actualiza esta máquina en vez de crearla de nuevo
+                setEditandoMaqId(idMaqCreada);
+                mensajeFinal = 'Maquinaria registrada correctamente.';
             }
 
             // 2. Auxiliar: Subir a S3 y luego guardar/actualizar en Doc_Maquinaria
             const procesarDocMaquinariaS3 = async (idMaq, tipoDoc, numDoc, fechaVenc, archivoInput) => {
                 if (!fechaVenc && !archivoInput) return;
-                
+
                 const docExistente = obtenerDocMaquina(idMaq, tipoDoc, documentosMaq);
                 let urlFinalS3 = docExistente?.url_archivo || '';
-                
+
                 // Si el usuario subió un archivo nuevo, lo enviamos a S3
                 if (archivoInput) {
                     urlFinalS3 = await subirArchivoAS3(archivoInput);
@@ -930,17 +1040,19 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 if (formMaq.fecha_venc_permiso || archivosMaq.permiso) {
                     promesasDocs.push(procesarDocMaquinariaS3(idMaqCreada, 'PERMISO DE CIRCULACIÓN', `PERM-${formMaq.patente.replace(/[^A-Z0-9]/g, '')}`, formMaq.fecha_venc_permiso, archivosMaq.permiso));
                 }
-                
+
                 if (promesasDocs.length > 0) await Promise.all(promesasDocs);
             }
 
+            setMensajeExito(mensajeFinal);
             setMostrarModalMaq(false);
             setEditandoMaqId(null);
             setErroresMaq({});
             cargarTodo();
         } catch (error) {
             console.error('Error al guardar maquinaria o documentos:', error);
-            setErroresMaq(extraerErroresApi(error, error.message || 'Ocurrió un error al guardar los datos de la maquinaria.', ['patente', 'marca', 'modelo', 'horometro_actual']));
+            if (maquinaGuardada) cargarTodo();
+            setErroresMaq(extraerErroresApi(error, error.message || 'No se pudo guardar la maquinaria. Intenta de nuevo.', ['patente', 'marca', 'modelo', 'horometro_actual']));
         }
     };
 
@@ -956,7 +1068,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     cargarTodo();
                 } catch (err) {
                     if (err.response && (err.response.status === 400 || err.response.status === 500 || err.response.status === 409)) {
-                        setError(`No se puede eliminar la maquinaria "${identificador}" porque posee partes diarios, contratos o gastos asociados.`);
+                        setError(`No se puede eliminar la maquinaria "${identificador}" porque tiene partes diarios, contratos o gastos asociados.`);
                     } else {
                         setError(`No fue posible eliminar la maquinaria "${identificador}".`);
                     }
@@ -967,12 +1079,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const validarCampoOperador = (nombre, valor) => {
         let msg = null;
-        if (nombre === 'nombre' && !valor.trim()) msg = 'Ingrese el nombre del operador.';
-        if (nombre === 'apellido' && !valor.trim()) msg = 'Ingrese el apellido del operador.';
+        if (nombre === 'nombre' && !valor.trim()) msg = 'Ingresa el nombre del operador.';
+        if (nombre === 'apellido' && !valor.trim()) msg = 'Ingresa el apellido del operador.';
         if (nombre === 'password' && valor && valor.length < 6) msg = 'La contraseña debe tener al menos 6 caracteres.';
         if (nombre === 'rut') {
-            if (!valor.trim()) msg = 'Ingrese el RUT del operador.';
-            else if (!validarRutChileno(valor)) msg = 'RUT inválido.';
+            if (!valor.trim()) msg = 'Ingresa el RUT del operador.';
+            else if (!validarRutChileno(valor)) msg = 'El RUT no es válido.';
         }
         return msg;
     };
@@ -1007,6 +1119,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const abrirEdicionOperador = (op) => {
         setEditandoOpId(op.id_operador);
+        irAlFormulario('form-operador');
 
         const licenciasArray = Array.isArray(op.TipoLicencia)
             ? op.TipoLicencia
@@ -1040,7 +1153,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         if (!editandoOpId && !formOp.password) nuevosErrores.password = 'Defina una contraseña para que el operador pueda ingresar.';
         else if (formOp.password) nuevosErrores.password = validarCampoOperador('password', formOp.password);
 
-        if (listaLicencias.length === 0) nuevosErrores.TipoLicencia = 'Debe seleccionar al menos una licencia.';
+        if (listaLicencias.length === 0) nuevosErrores.TipoLicencia = 'Selecciona al menos una licencia.';
 
         const licenciaGuardada = editandoOpId
             ? (operadores.find(o => o.id_operador === editandoOpId)?.fecha_vencimiento_licencia || '')
@@ -1048,7 +1161,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         if (formOp.fecha_vencimiento_licencia
             && formOp.fecha_vencimiento_licencia < fechaHoy
             && formOp.fecha_vencimiento_licencia !== licenciaGuardada) {
-            nuevosErrores.fecha_vencimiento_licencia = 'La licencia debe vencer a partir de hoy.';
+            nuevosErrores.fecha_vencimiento_licencia = 'La fecha de vencimiento no puede ser anterior a hoy.';
         }
 
         if (Object.values(nuevosErrores).some(msg => msg)) {
@@ -1059,8 +1172,8 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
         try {
             // 1. Mantenemos la URL anterior si editamos, o vacía si es nuevo
-            let urlLicenciaS3 = editandoOpId 
-                ? (operadores.find(o => o.id_operador === editandoOpId)?.archivo_licencia || '') 
+            let urlLicenciaS3 = editandoOpId
+                ? (operadores.find(o => o.id_operador === editandoOpId)?.archivo_licencia || '')
                 : '';
 
             // 2. Si el usuario seleccionó un archivo nuevo, lo subimos directo a S3
@@ -1075,7 +1188,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 rut: formOp.rut,
                 TipoLicencia: listaLicencias.join(', '),
                 fecha_vencimiento_licencia: formOp.fecha_vencimiento_licencia || null,
-                archivo_licencia: urlLicenciaS3 
+                archivo_licencia: urlLicenciaS3
             };
 
             if (formOp.password) payload.password = formOp.password;
@@ -1087,7 +1200,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 await axios.post('operadores/', payload);
                 setMensajeExito('Operador registrado correctamente.');
             }
-            
+
             setMostrarModalOp(false);
             setEditandoOpId(null);
             setArchivoLicencia(null);
@@ -1123,11 +1236,11 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const validarCampoGasto = (nombre, valor) => {
         let msg = null;
         if (nombre === 'monto') {
-            if (!valor) msg = 'Ingrese el monto del gasto.';
-            else if (parseInt(valor, 10) <= 0) msg = 'El monto debe ser mayor a 0.';
+            if (!valor) msg = 'Ingresa el monto del gasto.';
+            else if (parseInt(valor, 10) <= 0) msg = '';
         }
         if (nombre === 'id_maquina' && !valor) {
-            msg = 'Seleccione la maquinaria asociada.';
+            msg = 'Selecciona la maquinaria asociada.';
         }
         return msg;
     };
@@ -1162,6 +1275,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
     const abrirEdicionGasto = (g) => {
         setEditandoGastoId(g.id_gasto);
+        irAlFormulario('form-gasto');
         setFormGasto({
             categoria_gasto: g.categoria_gasto,
             monto: g.monto,
@@ -1189,7 +1303,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
 
         if (formGasto.fecha && formGasto.fecha > fechaHoy) {
-            setErroresGasto({ general: 'La fecha del gasto no puede ser posterior a hoy.' });
+            setErroresGasto({ general: 'La fecha del gasto no puede ser futura.' });
             return;
         }
 
@@ -1199,12 +1313,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         const idReal = usuario?.id_usuario || usuario?.id || sesionStorage.id_usuario || sesionStorage.id;
 
         if (!idReal) {
-            setErroresGasto({ general: 'No se encontró una sesión de usuario válida. Por favor, vuelva a iniciar sesión.' });
+            setErroresGasto({ general: 'No se encontró una sesión de usuario válida. Por favor, vuelve a iniciar sesión.' });
             return;
         }
 
         try {
-            let urlComprobanteFinal = formGasto.url_comprobante || ''; 
+            let urlComprobanteFinal = formGasto.url_comprobante || '';
 
             if (archivoGasto) {
                 urlComprobanteFinal = await subirArchivoAS3(archivoGasto);
@@ -1217,7 +1331,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 id_maquina: parseInt(formGasto.id_maquina, 10),
                 numero_comprobante: formGasto.numero_comprobante.trim() || 'S/N',
                 id_usuario: idReal,
-                url_comprobante: urlComprobanteFinal 
+                url_comprobante: urlComprobanteFinal
             };
 
             if (formGasto.id_contrato) {
@@ -1697,7 +1811,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                 {m.enMantencionOTaller ? (
                                                     <span className="adm-badge-red">En Taller / Mantención</span>
                                                 ) : m.ocupadaPorContrato ? (
-                                                    <span className="adm-badge-amber">Asignada a Contrato</span>
+                                                    <span className="adm-badge-amber">Asignada a contrato</span>
                                                 ) : (
                                                     <span className="adm-badge-green">Disponible</span>
                                                 )}
@@ -1797,9 +1911,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                     </td>
                                                     <td style={{ textAlign: 'center' }}>
                                                         {m.nivelAlerta === 'MANTENCIÓN_PENDIENTE' ? (
-                                                            <span className="adm-badge-red">MANTENCIÓN PENDIENTE</span>
+                                                            <span className="adm-badge-red">Mantención pendiente</span>
                                                         ) : (
-                                                            <span className="adm-badge-amber">PRÓXIMA MANTENCIÓN</span>
+                                                            <span className="adm-badge-amber">Próxima mantención</span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -1848,7 +1962,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     </div>
 
                     {mostrarModalCli && (
-                        <div className="adm-card adm-form-box">
+                        <div className="adm-card adm-form-box" id="form-cliente" style={{ scrollMarginTop: '16px' }}>
                             <h3 className="adm-card-title">
                                 {editandoCliId ? `Modificar Cliente #${editandoCliId}` : 'Registro de Cliente'}
                             </h3>
@@ -1978,7 +2092,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     <tr>
                                         <th>ID</th>
                                         <th>Razón Social</th>
-                                        <th>RUT</th>
+                                        <th style={{ minWidth: '130px' }}>RUT</th>
                                         <th>Giro</th>
                                         <th>Dirección</th>
                                         <th>Contacto</th>
@@ -1996,7 +2110,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             <tr key={c.id_cliente || c.id}>
                                                 <td>#{c.id_cliente || c.id}</td>
                                                 <td><strong>{c.razon_social || c.nombre}</strong></td>
-                                                <td><span className="adm-code-tag">{c.rut}</span></td>
+                                                <td style={{ whiteSpace: 'nowrap' }}><span className="adm-code-tag" style={{ whiteSpace: 'nowrap' }}>{c.rut}</span></td>
                                                 <td><span className="adm-tag">{c.giro || 'N/A'}</span></td>
                                                 <td>{c.direccion || 'Sin Dirección'}</td>
                                                 <td>{contactoMostrar}</td>
@@ -2013,7 +2127,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                         className="adm-action-btn delete"
                                                         onClick={() => confirmarEliminarCliente(c)}
                                                     >
-                                                        Borrar
+                                                        Eliminar
                                                     </button>
                                                 </td>
                                             </tr>
@@ -2061,14 +2175,14 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     <div className="adm-card" style={{ marginBottom: '24px' }}>
                         <div className="adm-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                                <h3 className="adm-card-title">Programación de Flota (Gantt)</h3>
+                                <h3 className="adm-card-title">Programación de Flota</h3>
                                 <p className="adm-card-sub">
                                     Línea de tiempo de asignación según contratos vigentes.
                                 </p>
                             </div>
 
                             <div className="adm-period-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="adm-period-label" style={{ fontWeight: '700' }}>Visualizar Mes:</span>
+                                <span className="adm-period-label" style={{ fontWeight: '700' }}>Mes a visualizar:</span>
                                 <select
                                     value={mesSeleccionado}
                                     onChange={(e) => setMesSeleccionado(e.target.value)}
@@ -2167,7 +2281,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                             <table className="adm-table">
                                 <thead>
                                     <tr>
-                                        <th>ID / Nombre Contrato</th>
+                                        <th>ID / Nombre del Contrato</th>
                                         <th>Cliente</th>
                                         <th>Maquinaria Asignada</th>
                                         <th>Tarifa / Hora</th>
@@ -2271,7 +2385,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     </div>
 
                     {mostrarModalMaq && (
-                        <div className="adm-card adm-form-box">
+                        <div className="adm-card adm-form-box" id="form-maquinaria" style={{ scrollMarginTop: '16px' }}>
                             <h3 className="adm-card-title">
                                 {editandoMaqId ? `Modificar Maquinaria #${editandoMaqId}` : 'Registro de Maquinaria y Acreditación de Faena'}
                             </h3>
@@ -2381,7 +2495,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </div>
                                 </div>
 
-                                <h4 style={{ marginTop: '20px', fontSize: '14px', color: 'var(--ink)' }}>Documentación de Acreditación de Faena (Patente)</h4>
+                                <h4 style={{ marginTop: '20px', fontSize: '14px', color: 'var(--ink)' }}>Documentos para ingresar a faena (Patente)</h4>
                                 <div className="adm-grid-3" style={{ marginTop: '10px' }}>
                                     <div className="adm-field">
                                         <label>SOAP (Seguro Obligatorio)</label>
@@ -2426,8 +2540,8 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         <th>Horómetro</th>
                                         <th>Estado SOAP</th>
                                         <th>Estado Rev. Técnica</th>
-                                        <th>ESTADO PERMISO</th>
-                                        <th>Documentos S3</th>
+                                        <th>Estado del permiso</th>
+                                        <th>Documentos</th>
                                         <th style={{ textAlign: 'center', width: '130px' }}>Acciones</th>
                                     </tr>
                                 </thead>
@@ -2474,12 +2588,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                                 Permiso
                                                             </button>
                                                         )}
-                                                        {!urlSoap && !urlRev && !urlPermiso && <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin adjuntos</span>}
+                                                        {!urlSoap && !urlRev && !urlPermiso && <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin archivo</span>}
                                                     </div>
                                                 </td>
                                                 <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                     <button type="button" className="adm-action-btn edit" onClick={() => abrirEdicionMaquinaria(m)}>Editar</button>
-                                                    <button type="button" className="adm-action-btn delete" onClick={() => confirmarEliminarMaquinaria(m)}>Borrar</button>
+                                                    <button type="button" className="adm-action-btn delete" onClick={() => confirmarEliminarMaquinaria(m)}>Eliminar</button>
                                                 </td>
                                             </tr>
                                         );
@@ -2516,7 +2630,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     </div>
 
                     {mostrarModalOp && (
-                        <div className="adm-card adm-form-box">
+                        <div className="adm-card adm-form-box" id="form-operador" style={{ scrollMarginTop: '16px' }}>
                             <h3 className="adm-card-title">{editandoOpId ? `Modificar Operador #${editandoOpId}` : 'Registro de Operador'}</h3>
                             <form onSubmit={guardarOperador} className="adm-crud-form" noValidate>
                                 <div className="adm-grid-3">
@@ -2677,12 +2791,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 <thead>
                                     <tr>
                                         <th>ID</th>
-                                        <th>NOMBRE Y APELLIDO</th>
-                                        <th>RUT</th>
-                                        <th>LICENCIAS</th>
-                                        <th>ESTADO LICENCIA</th>
-                                        <th>DOCUMENTOS S3</th>
-                                        <th style={{ textAlign: 'center', width: '130px' }}>ACCIONES</th>
+                                        <th>Nombre y apellido</th>
+                                        <th style={{ minWidth: '130px' }}>RUT</th>
+                                        <th>Licencias</th>
+                                        <th>Estado de la licencia</th>
+                                        <th>Documentos</th>
+                                        <th style={{ textAlign: 'center', width: '130px' }}>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -2703,7 +2817,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                     </strong>
                                                 </td>
                                                 <td>
-                                                    <span className="adm-code-tag">
+                                                    <span className="adm-code-tag" style={{ whiteSpace: 'nowrap' }}>
                                                         {op.id_usuario?.rut || op.rut || 'N/A'}
                                                     </span>
                                                 </td>
@@ -2734,13 +2848,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                             Ver Documento
                                                         </button>
                                                     ) : (
-                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin documento</span>
+                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin archivo</span>
                                                     )}
                                                 </td>
 
                                                 <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                     <button type="button" className="adm-action-btn edit" onClick={() => abrirEdicionOperador(op)}>Editar</button>
-                                                    <button type="button" className="adm-action-btn delete" onClick={() => confirmarEliminarOperador(op)}>Borrar</button>
+                                                    <button type="button" className="adm-action-btn delete" onClick={() => confirmarEliminarOperador(op)}>Eliminar</button>
                                                 </td>
                                             </tr>
                                         );
@@ -2800,11 +2914,48 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 </option>
                             ))}
                         </select>
+                        <select
+                            value={filtroGastoCategoria}
+                            onChange={(e) => setFiltroGastoCategoria(e.target.value)}
+                            className="adm-select-period"
+                        >
+                            <option value="todos">Todas las categorías</option>
+                            <option value="Combustible">Combustible / Diésel</option>
+                            <option value="Repuesto">Repuestos y Componentes</option>
+                            <option value="Viatico">Viáticos</option>
+                            <option value="Lubricante">Lubricantes y Filtros</option>
+                            <option value="Taller">Servicio Técnico / Taller</option>
+                            <option value="Traslado">Traslado / Flete</option>
+                        </select>
+
+                        <input
+                            type="date"
+                            className="adm-select-period"
+                            title="Desde"
+                            value={gastoDesde}
+                            max={gastoHasta || hoyLocalISO()}
+                            onChange={(e) => setGastoDesde(e.target.value > hoyLocalISO() ? hoyLocalISO() : e.target.value)}
+                        />
+                        <input
+                            type="date"
+                            className="adm-select-period"
+                            title="Hasta"
+                            value={gastoHasta}
+                            min={gastoDesde || undefined}
+                            max={hoyLocalISO()}
+                            onChange={(e) => setGastoHasta(e.target.value > hoyLocalISO() ? hoyLocalISO() : e.target.value)}
+                        />
+
+                        {hayFiltroGastos && (
+                            <button type="button" className="adm-btn-secondary" onClick={limpiarFiltrosGastos}>
+                                Limpiar filtros
+                            </button>
+                        )}
 
                     </div>
 
                     {mostrarModalGasto && (
-                        <div className="adm-card adm-form-box">
+                        <div className="adm-card adm-form-box" id="form-gasto" style={{ scrollMarginTop: '16px' }}>
                             <h3 className="adm-card-title">{editandoGastoId ? `Modificar Gasto #${editandoGastoId}` : 'Registro de Gasto Operativo'}</h3>
                             <form onSubmit={guardarGasto} className="adm-crud-form" noValidate>
                                 <div className="adm-grid-3">
@@ -2814,7 +2965,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             value={formGasto.categoria_gasto}
                                             onChange={e => setFormGasto({ ...formGasto, categoria_gasto: e.target.value })}
                                         >
-                                            <option value="Combustible">Combustible / Diesel</option>
+                                            <option value="Combustible">Combustible / Diésel</option>
                                             <option value="Repuesto">Repuestos y Componentes</option>
                                             <option value="Viatico">Viáticos</option>
                                             <option value="Lubricante">Lubricantes y Filtros</option>
@@ -2823,7 +2974,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         </select>
                                     </div>
                                     <div className="adm-field">
-                                        <label>Monto ($CLP) *</label>
+                                        <label>Monto (CLP) *</label>
                                         <input
                                             type="number"
                                             placeholder="Ej: 65000"
@@ -2845,7 +2996,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             onChange={e => handleCambioGasto('id_maquina', e.target.value)}
                                             style={{ borderColor: erroresGasto.id_maquina ? '#dc2626' : '' }}
                                         >
-                                            <option value="">Seleccione maquinaria...</option>
+                                            <option value="">Selecciona una maquinaria...</option>
                                             {maquinarias.map(m => (
                                                 <option key={m.id_maquina} value={m.id_maquina}>
                                                     {m.patente} - {m.marca} {m.modelo}
@@ -2956,7 +3107,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         <th>Documento</th>
                                         <th>Maquinaria</th>
                                         <th>Contrato</th>
-                                        <th style={{ textAlign: 'right' }}>Monto ($CLP)</th>
+                                        <th style={{ textAlign: 'right' }}>Monto (CLP)</th>
                                         <th style={{ textAlign: 'center', width: '130px' }}>Acciones</th>
                                     </tr>
                                 </thead>
@@ -2985,7 +3136,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                             Ver Documento
                                                         </button>
                                                     ) : (
-                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin documento</span>
+                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin archivo</span>
                                                     )}
                                                 </td>
                                                 <td>
@@ -3018,12 +3169,19 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                         className="adm-action-btn delete"
                                                         onClick={() => confirmarEliminarGasto(g)}
                                                     >
-                                                        Borrar
+                                                        Eliminar
                                                     </button>
                                                 </td>
                                             </tr>
                                         );
                                     })}
+                                    {gastosFiltrados.length === 0 && (
+                                        <tr>
+                                            <td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                                                No hay gastos que coincidan con los filtros.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -3036,6 +3194,85 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     <div className="adm-action-bar">
                         <div>
                             <h2>Control de Partes Diarios</h2>
+                            <div className="adm-period-controls" style={{ marginBottom: '14px' }}>
+                                <div className="adm-search-wrap" style={{ flex: 1, minWidth: '220px' }}>
+                                    <input
+                                        type="text"
+                                        className="adm-search-input"
+                                        placeholder="Buscar por N° de parte, patente o contrato..."
+                                        value={busquedaParte}
+                                        onChange={(e) => setBusquedaParte(e.target.value)}
+                                    />
+                                    {busquedaParte && (
+                                        <button className="adm-search-clear" onClick={() => setBusquedaParte('')}>✕</button>
+                                    )}
+                                </div>
+
+                                <input
+                                    type="date"
+                                    className="adm-select-period"
+                                    title="Desde"
+                                    value={parteDesde}
+                                    max={parteHasta || hoyLocalISO()}
+                                    onChange={(e) => setParteDesde(e.target.value > hoyLocalISO() ? hoyLocalISO() : e.target.value)}
+                                />
+                                <input
+                                    type="date"
+                                    className="adm-select-period"
+                                    title="Hasta"
+                                    value={parteHasta}
+                                    min={parteDesde || undefined}
+                                    max={hoyLocalISO()}
+                                    onChange={(e) => setParteHasta(e.target.value > hoyLocalISO() ? hoyLocalISO() : e.target.value)}
+                                />
+
+                                <select
+                                    value={filtroParteMaquina}
+                                    onChange={(e) => setFiltroParteMaquina(e.target.value)}
+                                    className="adm-select-period"
+                                >
+                                    <option value="todos">Todas las máquinas</option>
+                                    {maquinarias.map(m => (
+                                        <option key={m.id_maquina} value={m.id_maquina}>
+                                            {m.patente} ({m.modelo})
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={filtroParteContrato}
+                                    onChange={(e) => setFiltroParteContrato(e.target.value)}
+                                    className="adm-select-period"
+                                >
+                                    <option value="todos">Todos los contratos</option>
+                                    <option value="sin">Sin contrato (historial)</option>
+                                    {contratos.map(c => (
+                                        <option key={c.id_contrato} value={c.id_contrato}>
+                                            {nombreContrato(c)} - {c.cliente_nombre || c.cliente || c.id_cliente?.razon_social || 'Cliente'}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={filtroParteEstado}
+                                    onChange={(e) => setFiltroParteEstado(e.target.value)}
+                                    className="adm-select-period"
+                                >
+                                    <option value="todos">Todos los estados</option>
+                                    <option value="firmados">Firmados</option>
+                                    <option value="pendientes">Pendientes</option>
+                                </select>
+
+                                {hayFiltroPartes && (
+                                    <button type="button" className="adm-btn-secondary" onClick={limpiarFiltrosPartes}>
+                                        Limpiar filtros
+                                    </button>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', margin: '0 0 14px 2px', fontSize: '14px' }}>
+                                <span><strong>{reportesFiltrados.length}</strong> de {reportes.length} partes</span>
+                            </div>
                             <p className="adm-card-sub">
                                 Registro de horas trabajadas y cálculo de facturación por máquina.
                             </p>
@@ -3060,7 +3297,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {reportes.map(r => {
+                                    {reportesFiltrados.map(r => {
                                         const maq = maquinarias.find(m => m.id_maquina === r.id_maquina || m.id === r.id_maquina);
                                         const tieneContrato = Boolean(r.id_contrato);
                                         const horas = parseFloat(r.horas_trabajadas) || 0;
@@ -3114,6 +3351,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             </tr>
                                         );
                                     })}
+                                    {reportesFiltrados.length === 0 && (
+                                        <tr>
+                                            <td colSpan={10} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                                                No hay partes que coincidan con los filtros.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
