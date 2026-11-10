@@ -14,14 +14,14 @@ const normalizarUrl = (url) => {
     return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
-// ===================== AYUDAS: TELÉFONO CHILENO Y FECHAS =====================
+// TELÉFONO 
 const soloDigitosTelefonoCL = (valor) => {
     let d = String(valor || '').replace(/\D/g, '');
     if (d.length === 11 && d.startsWith('56')) d = d.slice(2);
     return d;
 };
 
-// Móvil: 9 dígitos que empiezan con 9. Fijo: 9 dígitos (código de zona + número) que empiezan con 2 a 7.
+// telefono 9 digitos
 const validarTelefonoCL = (valor) => {
     const d = soloDigitosTelefonoCL(valor);
     if (d.length !== 9 || /^(\d)\1+$/.test(d)) return false;
@@ -36,7 +36,7 @@ const formatearTelefonoCL = (valor) => {
     return `+56 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`;
 };
 
-// Fecha de hoy en hora local (YYYY-MM-DD). toISOString() usa UTC y de noche en Chile marca "mañana".
+// Fecha de hoy en hora local 
 const hoyLocalISO = () => new Date().toLocaleDateString('en-CA');
 
 const aFechaLocal = (iso) => {
@@ -57,14 +57,13 @@ const diasHasta = (iso) => {
 };
 
 const textoDias = (n) => `${n} ${n === 1 ? 'día' : 'días'}`;
-// ============================================================================
 
-// ===================== AYUDAS: CONTRATOS Y MÁQUINAS OCUPADAS =====================
+// CONTRATOS Y MÁQUINAS OCUPADAS 
 const ESTADOS_CONTRATO_VIGENTES = ['ACTIVO', 'PRORROGADO'];
 
 const nombreDeContrato = (c) => c.nombre_contrato || `Contrato #${c.id_contrato}`;
 
-// Devuelve el contrato vigente que ya usa esa máquina en el período indicado (o null).
+// Devuelve el contrato vigente que ya usa esa máquina en el período indicado 
 const buscarChoqueMaquina = (contratos, idMaquina, inicio, fin, excluirIdContrato = null) => {
     return (contratos || []).find((c) => {
         if (c.activo === false) return false;
@@ -87,7 +86,7 @@ const extraerErrorApi = (err, defecto) => {
     const partes = Object.values(d).flat().map((x) => (typeof x === 'string' ? x : JSON.stringify(x)));
     return partes.length ? partes.join(' ') : defecto;
 };
-// ================================================================================
+
 
 export default function VistaContador({ modoNoche }) {
     const fechaHoy = hoyLocalISO();
@@ -111,7 +110,6 @@ export default function VistaContador({ modoNoche }) {
     const [busquedaContratoContador, setBusquedaContratoContador] = useState('');
     const [pestaña, setPestaña] = useState('facturacion_hes');
 
-    // CONTROL DEL DESPLIEGUE DEL FORMULARIO IN-LINE
     const [mostrarFormContrato, setMostrarFormContrato] = useState(false);
 
     // FORMULARIO NUEVO CONTRATO
@@ -126,7 +124,6 @@ export default function VistaContador({ modoNoche }) {
         ]
     });
 
-    // ESTADO DE ERRORES DE VALIDACIÓN MANUAL
     const [erroresFormContrato, setErroresFormContrato] = useState({});
 
     // Modales de Trabajo y Formulario Factura / HES
@@ -139,7 +136,7 @@ export default function VistaContador({ modoNoche }) {
     const [archivoDocEmpresa, setArchivoDocEmpresa] = useState(null);
     const [tipoDocEmpresa, setTipoDocEmpresa] = useState('F30');
 
-    // Carga Masiva de Datos desde el Backend
+
     const cargarDatosFinancieros = async () => {
         setCargando(true);
         try {
@@ -178,7 +175,7 @@ export default function VistaContador({ modoNoche }) {
         setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
     };
 
-    // FUNCIONES DEL FORMULARIO DE MAQUINARIAS MÚLTIPLES
+    // FUNCIONES DEL FORMULARIO DE MAQUINARIAS 
     const agregarFilaMaquina = () => {
         setFormContrato(prev => ({
             ...prev,
@@ -301,7 +298,7 @@ export default function VistaContador({ modoNoche }) {
     const contratoEnProrroga = () =>
         contratos.find(c => String(c.id_contrato) === String(modalProrroga.idContrato)) || null;
 
-    // La nueva fecha debe ser posterior al término actual y nunca anterior a hoy.
+    // validaciones fecha
     const fechaMinProrroga = () => {
         const c = contratoEnProrroga();
         if (c && c.fecha_fin) {
@@ -422,14 +419,11 @@ export default function VistaContador({ modoNoche }) {
         }
 
         try {
-            // 1. Subimos directamente el archivo a S3 usando nuestro helper
             const urlS3 = await subirArchivoAS3(archivoDocEmpresa);
             
-            // 2. Obtenemos el ID del usuario de la sesión actual
             const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
             const idRealUsuario = sesionStorage.id_usuario || sesionStorage.id;
 
-            // 3. Preparamos el payload en JSON limpio apuntando a S3
             const payload = {
                 tipo_documento: tipoDocEmpresa,
                 fecha_emision: fechaHoy,
@@ -439,7 +433,6 @@ export default function VistaContador({ modoNoche }) {
                 activo: true
             };
 
-            // 4. Guardamos en el backend de Django (usando una sola ruta limpia)
             await axios.post('doc-empresa/', payload);
             
             mostrarNotificacion(`Documento [${tipoDocEmpresa}] agregado a la Carpeta Tributaria.`);
@@ -454,10 +447,8 @@ export default function VistaContador({ modoNoche }) {
     const abrirVisor = async ({ url, titulo, subtitulo }) => {
         if (!url) return;
         
-        // 1. Pedimos la URL temporal segura
         const urlSegura = await obtenerUrlLecturaS3(url);
         
-        // 2. Normalizamos y abrimos
         const urlNorm = normalizarUrl(urlSegura);
         setModalDoc({
             abierto: true,
@@ -519,7 +510,6 @@ export default function VistaContador({ modoNoche }) {
     };
 
     const resumenPorContrato = contratos.map((cont) => {
-        // Solo los partes de ESTE contrato (antes también se mezclaban partes por máquina).
         const reportesAsociados = reportes.filter(
             (r) => String(r.id_contrato) === String(cont.id_contrato)
         );
@@ -839,7 +829,7 @@ export default function VistaContador({ modoNoche }) {
                             <h3 className="cnt-form-title">Registrar Nuevo Contrato de Arriendo</h3>
                             <form onSubmit={handleCrearContrato} noValidate>
 
-                                {/* 1. CAMPOS GENERALES DEL CONTRATO */}
+                                {/* CAMPOS GENERALES DEL CONTRATO */}
                                 <div className="cnt-input-group full-width" style={{ marginBottom: '16px' }}>
                                     <label>Nombre / Sector del Contrato</label>
                                     <input
@@ -904,7 +894,7 @@ export default function VistaContador({ modoNoche }) {
                                     </div>
                                 </div>
 
-                                {/* 2. SECCIÓN DE MAQUINARIAS Y TARIFAS */}
+                                {/* MAQUINARIAS Y TARIFAS */}
                                 <div className="cnt-machines-container">
                                     <div className="cnt-machines-header">
                                         <label className="cnt-section-label">
