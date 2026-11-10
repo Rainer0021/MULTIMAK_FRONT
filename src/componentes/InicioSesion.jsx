@@ -95,8 +95,10 @@ export default function InicioSesion({ onLogin }) {
     } catch (err) {
         if (err.response) {
             const { status, data } = err.response;
-            if (status === 400 || status === 401) {
+                        if (status === 400 || status === 401) {
                 setError(data?.error || 'RUT o contraseña incorrectos.');
+            } else if (status === 429) {
+                setError('Demasiados intentos. Espera un minuto e intenta de nuevo.');
             } else {
                 setError(data?.error || 'Error del servidor. Intenta nuevamente en unos minutos.');
             }
@@ -171,7 +173,11 @@ export default function InicioSesion({ onLogin }) {
             }
         } catch (err) {
             if (err.response) {
-                setError(err.response.data?.error || 'No se pudo cambiar la contraseña. Intenta nuevamente.');
+                setError(
+                    err.response.status === 429
+                        ? 'Demasiados intentos. Espera un minuto e intenta de nuevo.'
+                        : (err.response.data?.error || 'No se pudo cambiar la contraseña. Intenta nuevamente.')
+                );
             } else if (err.request) {
                 setError('No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.');
             } else {
