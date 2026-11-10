@@ -3311,6 +3311,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         <th style={{ textAlign: 'right' }}>Horas Trabajadas</th>
                                         <th style={{ textAlign: 'right' }}>Monto Estimado</th>
                                         <th>Combustible</th>
+                                        <th>Firma / Respaldo</th>
                                         <th>Estado</th>
                                     </tr>
                                 </thead>
@@ -3360,12 +3361,31 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                 </td>
                                                 <td>{litros > 0 ? `${litros} L` : 'Sin carga'}</td>
                                                 <td>
+                                                    {r.url_firma ? (
+                                                        <button
+                                                            type="button"
+                                                            className="adm-btn-file-view s3-ready"
+                                                            onClick={() => abrirVisorDoc({
+                                                                url: r.url_firma,
+                                                                titulo: `Firma / Comprobante - Parte #${r.id_report}`,
+                                                                subtitulo: `Fecha: ${formatoFechaCL(r.fecha)} - Máquina: ${maq?.patente || r.id_maquina}`
+                                                            })}
+                                                        >
+                                                            Ver Firma
+                                                        </button>
+                                                    ) : (
+                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sin firma</span>
+                                                    )}
+                                                </td>
+
+                                                <td>
                                                     {r.firmado ? (
                                                         <span className="adm-badge-green">Firmado</span>
                                                     ) : (
                                                         <span className="adm-badge-red">Pendiente</span>
                                                     )}
                                                 </td>
+
                                             </tr>
                                         );
                                     })}

@@ -292,7 +292,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
                 horometro_final: parseFloat(hFinalNum),
                 combustible_litros: cargoCombustible ? (parseFloat(combustible) || 0) : 0,
                 firmado: true,
-                firma_supervisor: urlFirmaS3 // Guardamos la URL en la BD
+                url_firma: urlFirmaS3 // Guardamos la URL en la BD
             };
 
             await axios.post('/reports/', payload);
