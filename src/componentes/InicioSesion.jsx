@@ -16,12 +16,26 @@ function formatearRutInput(valor) {
     return `${cuerpoFormateado}-${dv}`;
 }
 
+const MENSAJE_CLAVE_SEGURA = 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número o símbolo.';
+
+const claveEsSegura = (clave) =>
+    clave.length >= 8
+    && /[A-ZÁÉÍÓÚÑÜ]/.test(clave)
+    && /[a-záéíóúñü]/.test(clave)
+    && /[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/.test(clave);
+
 export default function InicioSesion({ onLogin }) {
     const [rut, setRut] = useState('');
     const [contraseña, setContraseña] = useState('');
     const [mostrarClave, setMostrarClave] = useState(false);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
+
+    // Cambio obligatorio de contraseña (primer ingreso o clave restablecida)
+    const [paso, setPaso] = useState('login'); // 'login' | 'cambiar'
+    const [claveActual, setClaveActual] = useState('');
+    const [claveNueva, setClaveNueva] = useState('');
+    const [claveRepetida, setClaveRepetida] = useState('');
 
     const manejarCambioRut = (e) => {
         setRut(formatearRutInput(e.target.value));
@@ -31,10 +45,25 @@ export default function InicioSesion({ onLogin }) {
     e.preventDefault();
     if (cargando) return;
     setError('');
-    setCargando(true);
 
     const rutFormateado = rut.trim();
     const claveLimpia = contraseña.trim();
+
+    // Avisos propios (en lugar del globo del navegador)
+    if (!rutFormateado && !claveLimpia) {
+        setError('Ingresa tu RUT y tu contraseña.');
+        return;
+    }
+    if (!rutFormateado) {
+        setError('Ingresa tu RUT.');
+        return;
+    }
+    if (!claveLimpia) {
+        setError('Ingresa tu contraseña.');
+        return;
+    }
+
+    setCargando(true);
 
     try {
         const res = await axios.post('/login/', { rut: rutFormateado, contraseña: claveLimpia });
@@ -44,6 +73,13 @@ export default function InicioSesion({ onLogin }) {
             const base = axios.defaults.baseURL || '';
             const origen = /^https?:/.test(base) ? new URL(base).origin : window.location.origin;
             window.location.href = `${origen}/api/admin-sso/?t=${encodeURIComponent(res.data.admin_sso_token)}`;
+            return;
+        }
+
+        // Primer ingreso (o clave restablecida por el administrador): debe elegir una contraseña nueva
+        if (res && res.data && res.data.debe_cambiar_clave) {
+            setClaveActual(claveLimpia);
+            setPaso('cambiar');
             return;
         }
 
@@ -73,6 +109,78 @@ export default function InicioSesion({ onLogin }) {
         setCargando(false);
     }
 };
+
+    const volverAlLogin = () => {
+        setPaso('login');
+        setClaveActual('');
+        setClaveNueva('');
+        setClaveRepetida('');
+        setContraseña('');
+        setMostrarClave(false);
+        setError('');
+    };
+
+    const manejarCambioClave = async (e) => {
+        e.preventDefault();
+        if (cargando) return;
+        setError('');
+
+        const nueva = claveNueva.trim();
+        const repetida = claveRepetida.trim();
+
+        if (!nueva) {
+            setError('Ingresa tu nueva contraseña.');
+            return;
+        }
+        if (!claveEsSegura(nueva)) {
+            setError(MENSAJE_CLAVE_SEGURA);
+            return;
+        }
+        if (!repetida) {
+            setError('Repite la nueva contraseña para confirmarla.');
+            return;
+        }
+        if (nueva !== repetida) {
+            setError('Las contraseñas no coinciden.');
+            return;
+        }
+        if (nueva === claveActual) {
+            setError('La nueva contraseña debe ser distinta de la que te entregó el administrador.');
+            return;
+        }
+
+        setCargando(true);
+        try {
+            await axios.post('/cambiar-clave-inicial/', {
+                rut: rut.trim(),
+                contraseña_actual: claveActual,
+                contraseña_nueva: nueva,
+            });
+
+            // Clave cambiada: se inicia sesión de inmediato con la clave nueva
+            const res = await axios.post('/login/', { rut: rut.trim(), contraseña: nueva });
+
+            if (res && res.data && res.data.access) {
+                localStorage.setItem('token_multimak', res.data.access);
+                localStorage.setItem('usuario_multimak', JSON.stringify(res.data));
+
+                onLogin(res.data);
+            } else {
+                volverAlLogin();
+                setError('Contraseña actualizada. Inicia sesión con tu nueva contraseña.');
+            }
+        } catch (err) {
+            if (err.response) {
+                setError(err.response.data?.error || 'No se pudo cambiar la contraseña. Intenta nuevamente.');
+            } else if (err.request) {
+                setError('No hay conexión con el servidor. Revisa tu internet e intenta nuevamente.');
+            } else {
+                setError('No se pudo cambiar la contraseña. Intenta nuevamente.');
+            }
+        } finally {
+            setCargando(false);
+        }
+    };
 
     return (
         <div className="login-container">
@@ -111,6 +219,77 @@ export default function InicioSesion({ onLogin }) {
             {/* PANEL DERECHO: FORMULARIO */}
             <div className="login-panel">
                 <div className="login-box">
+                    {paso === 'cambiar' ? (
+                        <>
+                            <div className="login-box-header">
+                                <h2 className="login-box-title">Crea tu nueva contraseña</h2>
+                                <p className="login-box-desc">
+                                    Por seguridad, debes cambiar la contraseña que te entregó el administrador antes de continuar.
+                                </p>
+                            </div>
+
+                            {error && <div className="login-error-alert">{error}</div>}
+
+                            <form onSubmit={manejarCambioClave} className="login-form" noValidate>
+                                <div className="form-group">
+                                    <div className="form-group-header">
+                                        <label className="form-group-label">Nueva contraseña</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setMostrarClave(!mostrarClave)}
+                                            className="btn-toggle-pass"
+                                        >
+                                            {mostrarClave ? 'Ocultar' : 'Mostrar'}
+                                        </button>
+                                    </div>
+                                    <input
+                                        type={mostrarClave ? 'text' : 'password'}
+                                        maxLength={40}
+                                        placeholder="Mínimo 8 caracteres"
+                                        value={claveNueva}
+                                        onChange={(e) => setClaveNueva(e.target.value)}
+                                        className="login-input"
+                                        autoComplete="new-password"
+                                        autoFocus
+                                    />
+                                    <p className="login-box-desc" style={{ marginTop: '6px', fontSize: '11px' }}>
+                                        Usa al menos 8 caracteres, con mayúscula, minúscula y un número o símbolo.
+                                    </p>
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-group-label">Repite la nueva contraseña</label>
+                                    <input
+                                        type={mostrarClave ? 'text' : 'password'}
+                                        maxLength={40}
+                                        placeholder="Escríbela otra vez"
+                                        value={claveRepetida}
+                                        onChange={(e) => setClaveRepetida(e.target.value)}
+                                        className="login-input"
+                                        autoComplete="new-password"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={cargando}
+                                    className="btn-login-submit"
+                                >
+                                    {cargando ? 'Guardando...' : 'Guardar y entrar'}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={volverAlLogin}
+                                    className="btn-toggle-pass"
+                                    style={{ alignSelf: 'center' }}
+                                >
+                                    Volver al inicio de sesión
+                                </button>
+                            </form>
+                        </>
+                    ) : (
+                    <>
                     <div className="login-box-header">
                         <h2 className="login-box-title">Iniciar sesión</h2>
                         <p className="login-box-desc">
@@ -120,12 +299,11 @@ export default function InicioSesion({ onLogin }) {
 
                     {error && <div className="login-error-alert">{error}</div>}
 
-                    <form onSubmit={manejarEnvio} className="login-form">
+                    <form onSubmit={manejarEnvio} className="login-form" noValidate>
                         <div className="form-group">
                             <label className="form-group-label">RUT</label>
                             <input
                                 type="text"
-                                required
                                 maxLength={150}
                                 placeholder="12.345.678-5"
                                 value={rut}
@@ -148,7 +326,6 @@ export default function InicioSesion({ onLogin }) {
                             </div>
                             <input
                                 type={mostrarClave ? 'text' : 'password'}
-                                required
                                 maxLength={40}
                                 placeholder="Tu contraseña"
                                 value={contraseña}
@@ -165,6 +342,8 @@ export default function InicioSesion({ onLogin }) {
                             {cargando ? 'Iniciando sesión...' : 'Iniciar sesión'}
                         </button>
                     </form>
+                    </>
+                    )}
                 </div>
             </div>
         </div>

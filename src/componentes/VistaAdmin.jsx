@@ -171,6 +171,14 @@ const nombreContrato = (c) => (c ? (c.nombre_contrato || c.nombre || `Contrato #
 const formatoCLP = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
 
 // Convierte la respuesta de error de la API en { campo: mensaje, general: mensaje }.
+const MENSAJE_CLAVE_SEGURA = 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número o símbolo.';
+
+const claveEsSegura = (clave) =>
+    clave.length >= 8
+    && /[A-ZÁÉÍÓÚÑÜ]/.test(clave)
+    && /[a-záéíóúñü]/.test(clave)
+    && /[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/.test(clave);
+
 const extraerErroresApi = (err, defecto, camposMostrados = []) => {
     const d = err && err.response && err.response.data;
     if (!d) {
@@ -346,7 +354,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         apellido: '',
         rut: '',
         password: '',
-        TipoLicencia: ['Clase D'],
+        TipoLicencia: [],
         fecha_vencimiento_licencia: ''
     });
     const [erroresOp, setErroresOp] = useState({});
@@ -1081,7 +1089,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         let msg = null;
         if (nombre === 'nombre' && !valor.trim()) msg = 'Ingresa el nombre del operador.';
         if (nombre === 'apellido' && !valor.trim()) msg = 'Ingresa el apellido del operador.';
-        if (nombre === 'password' && valor && valor.length < 6) msg = 'La contraseña debe tener al menos 6 caracteres.';
+        if (nombre === 'password' && valor && !claveEsSegura(valor)) msg = MENSAJE_CLAVE_SEGURA;
         if (nombre === 'rut') {
             if (!valor.trim()) msg = 'Ingresa el RUT del operador.';
             else if (!validarRutChileno(valor)) msg = 'El RUT no es válido.';
@@ -1108,7 +1116,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 apellido: '',
                 rut: '',
                 password: '',
-                TipoLicencia: ['Clase D'],
+                TipoLicencia: [],
                 fecha_vencimiento_licencia: ''
             });
             setArchivoLicencia(null);
@@ -1123,7 +1131,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
         const licenciasArray = Array.isArray(op.TipoLicencia)
             ? op.TipoLicencia
-            : (op.TipoLicencia ? op.TipoLicencia.split(',').map(l => l.trim()) : ['Clase D']);
+            : (op.TipoLicencia ? op.TipoLicencia.split(',').map(l => l.trim()) : []);
 
         setFormOp({
             nombre: op.id_usuario?.nombre || op.nombre || '',
@@ -1155,13 +1163,18 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
         if (listaLicencias.length === 0) nuevosErrores.TipoLicencia = 'Selecciona al menos una licencia.';
 
-        const licenciaGuardada = editandoOpId
-            ? (operadores.find(o => o.id_operador === editandoOpId)?.fecha_vencimiento_licencia || '')
-            : '';
-        if (formOp.fecha_vencimiento_licencia
-            && formOp.fecha_vencimiento_licencia < fechaHoy
-            && formOp.fecha_vencimiento_licencia !== licenciaGuardada) {
+        const operadorActual = editandoOpId ? operadores.find(o => o.id_operador === editandoOpId) : null;
+        const licenciaGuardada = operadorActual?.fecha_vencimiento_licencia || '';
+        if (!formOp.fecha_vencimiento_licencia) {
+            nuevosErrores.fecha_vencimiento_licencia = 'Ingresa la fecha de vencimiento de la licencia.';
+        } else if (formOp.fecha_vencimiento_licencia < fechaHoy && formOp.fecha_vencimiento_licencia !== licenciaGuardada) {
             nuevosErrores.fecha_vencimiento_licencia = 'La fecha de vencimiento no puede ser anterior a hoy.';
+        }
+
+        // El documento de la licencia es obligatorio: uno nuevo, o el que ya estaba guardado
+        const urlLicenciaPrevia = operadorActual?.licencia_url || '';
+        if (!archivoLicencia && !urlLicenciaPrevia) {
+            nuevosErrores.archivo_licencia = 'Adjunta el documento de la licencia.';
         }
 
         if (Object.values(nuevosErrores).some(msg => msg)) {
@@ -1172,9 +1185,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
 
         try {
             // 1. Mantenemos la URL anterior si editamos, o vacía si es nuevo
-            let urlLicenciaS3 = editandoOpId
-                ? (operadores.find(o => o.id_operador === editandoOpId)?.archivo_licencia || '')
-                : '';
+            let urlLicenciaS3 = urlLicenciaPrevia;
 
             // 2. Si el usuario seleccionó un archivo nuevo, lo subimos directo a S3
             if (archivoLicencia && typeof archivoLicencia === 'object') {
@@ -1208,7 +1219,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             cargarTodo();
         } catch (err) {
             setErroresOp(extraerErroresApi(err, 'No se pudo guardar al operador. Intenta nuevamente.',
-                ['nombre', 'apellido', 'rut', 'password', 'TipoLicencia', 'fecha_vencimiento_licencia']));
+                ['nombre', 'apellido', 'rut', 'password', 'TipoLicencia', 'fecha_vencimiento_licencia', 'archivo_licencia']));
         }
     };
 
@@ -2690,7 +2701,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         <input
                                             type="text"
                                             autoComplete="off"
-                                            placeholder={editandoOpId ? 'Dejar vacío para no cambiarla' : 'Mínimo 6 caracteres'}
+                                            placeholder={editandoOpId ? 'Dejar vacío para no cambiarla' : 'Mín. 8 caracteres, mayúscula y número'}
                                             value={formOp.password}
                                             onChange={e => handleCambioOp('password', e.target.value)}
                                             style={{ borderColor: erroresOp.password ? '#dc2626' : '' }}
@@ -2701,12 +2712,14 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             </span>
                                         ) : (
                                             <span style={{ color: '#64748b', fontSize: '10px', marginTop: '2px', display: 'block' }}>
-                                                El operador ingresa al sistema con su RUT y esta contraseña.
+                                                {editandoOpId
+                                                    ? 'Si la cambias, el operador deberá elegir una contraseña nueva al ingresar.'
+                                                    : 'El operador ingresa con su RUT y esta contraseña, y deberá cambiarla en su primer ingreso.'}
                                             </span>
                                         )}
                                     </div>
                                     <div className="adm-field">
-                                        <label>Fecha Vencimiento Licencia</label>
+                                        <label>Fecha Vencimiento Licencia *</label>
                                         <input
                                             type="date"
                                             min={fechaHoy}
@@ -2723,7 +2736,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 </div>
 
                                 <div className="adm-field" style={{ marginTop: '14px' }}>
-                                    <label>Tipos de Licencia</label>
+                                    <label>Tipos de Licencia *</label>
                                     <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '8px' }}>
                                         {['Clase D', 'Clase A4', 'Clase A5', 'Clase B'].map((lic) => {
                                             const listadoActual = Array.isArray(formOp.TipoLicencia)
@@ -2759,16 +2772,30 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 <div className="adm-uploader-box" style={{ marginTop: '14px' }}>
                                     <label className="adm-uploader-label">
                                         <span className="adm-uploader-title">
-                                            {archivoLicencia ? 'Licencia Seleccionada' : 'Adjuntar Documento de Licencia'}
+                                            {archivoLicencia
+                                                ? 'Licencia Seleccionada'
+                                                : (editandoOpId && operadores.find(o => o.id_operador === editandoOpId)?.licencia_url
+                                                    ? 'Reemplazar documento de licencia (opcional)'
+                                                    : 'Adjuntar Documento de Licencia *')}
                                         </span>
                                         <input
                                             type="file"
                                             accept="application/pdf,image/*"
                                             style={{ display: 'none' }}
-                                            onChange={(e) => e.target.files?.[0] && setArchivoLicencia(e.target.files[0])}
+                                            onChange={(e) => {
+                                                if (e.target.files?.[0]) {
+                                                    setArchivoLicencia(e.target.files[0]);
+                                                    setErroresOp(prev => ({ ...prev, archivo_licencia: null }));
+                                                }
+                                            }}
                                         />
                                     </label>
                                 </div>
+                                {erroresOp.archivo_licencia && (
+                                    <span style={{ color: '#dc2626', fontSize: '11px', fontWeight: '700', marginTop: '4px', display: 'block' }}>
+                                        {erroresOp.archivo_licencia}
+                                    </span>
+                                )}
 
                                 {erroresOp.general && (
                                     <div className="adm-alert-fail" style={{ marginTop: '16px' }}>{erroresOp.general}</div>
