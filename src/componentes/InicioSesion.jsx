@@ -3,7 +3,6 @@ import axios from '../api/axios';
 import '../styles/InicioSesion.css';
 
 function formatearRutInput(valor) {
-    // Si tiene letras distintas de K, es un nombre de usuario (superusuario): no se formatea
     if (/[a-jl-z]/i.test(valor)) return valor;
 
     const limpio = valor.replace(/[^0-9kK]/g, '').toUpperCase();
@@ -31,7 +30,7 @@ export default function InicioSesion({ onLogin }) {
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
 
-    // Cambio obligatorio de contraseña (primer ingreso o clave restablecida)
+    // Cambio obligatorio de contraseña 
     const [paso, setPaso] = useState('login'); // 'login' | 'cambiar'
     const [claveActual, setClaveActual] = useState('');
     const [claveNueva, setClaveNueva] = useState('');
@@ -76,7 +75,7 @@ export default function InicioSesion({ onLogin }) {
             return;
         }
 
-        // Primer ingreso (o clave restablecida por el administrador): debe elegir una contraseña nueva
+        // Primer ingresodebe elegir una contraseña nueva
         if (res && res.data && res.data.debe_cambiar_clave) {
             setClaveActual(claveLimpia);
             setPaso('cambiar');
@@ -84,7 +83,7 @@ export default function InicioSesion({ onLogin }) {
         }
 
         if (res && res.data && res.data.access) {
-            // Guardamos el token y los datos de usuario en localStorage
+            // Guarda el token y los datos de usuario en localStorage
             localStorage.setItem('token_multimak', res.data.access);
             localStorage.setItem('usuario_multimak', JSON.stringify(res.data));
 
@@ -222,7 +221,7 @@ export default function InicioSesion({ onLogin }) {
                 </div>
             </div>
 
-            {/* PANEL DERECHO: FORMULARIO */}
+            {/* FORMULARIO */}
             <div className="login-panel">
                 <div className="login-box">
                     {paso === 'cambiar' ? (
