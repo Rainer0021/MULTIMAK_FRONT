@@ -119,14 +119,14 @@ const obtenerDocMaquina = (idMaquina, tipoDoc, listaDocs = []) => {
     });
 };
 
-// ===================== AYUDAS: TELÉFONO CHILENO Y FECHAS =====================
+// TELÉFONO Y FECHAS 
 const soloDigitosTelefonoCL = (valor) => {
     let d = String(valor || '').replace(/\D/g, '');
     if (d.length === 11 && d.startsWith('56')) d = d.slice(2);
     return d;
 };
 
-// Móvil: 9 dígitos que empiezan con 9. Fijo: 9 dígitos (código de zona + número) que empiezan con 2 a 7.
+// Validacion para el telefono
 const validarTelefonoCL = (valor) => {
     const d = soloDigitosTelefonoCL(valor);
     if (d.length !== 9 || /^(\d)\1+$/.test(d)) return false;
@@ -141,7 +141,7 @@ const formatearTelefonoCL = (valor) => {
     return `+56 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`;
 };
 
-// Fecha de hoy en hora local (YYYY-MM-DD). toISOString() usa UTC y de noche en Chile marca "mañana".
+// Fecha
 const hoyLocalISO = () => new Date().toLocaleDateString('en-CA');
 const sumarDiasISO = (dias) => {
     const d = new Date();
@@ -150,7 +150,7 @@ const sumarDiasISO = (dias) => {
 };
 const mesActualISO = () => hoyLocalISO().slice(0, 7);
 
-// Estados de máquina: antes el front guardaba "En Taller" y el back "EN TALLER". Ahora se compara sin importar el formato.
+// Estados de máquina
 const estadoMaquinaNorm = (e) => String(e || '').trim().toUpperCase();
 const maquinaEnTallerOMantencion = (e) => {
     const x = estadoMaquinaNorm(e);
@@ -165,12 +165,10 @@ const nombreEstadoMaquina = (e) => {
     return e;
 };
 
-// En pantalla el administrador ve el NOMBRE del contrato, no su número interno.
 const nombreContrato = (c) => (c ? (c.nombre_contrato || c.nombre || `Contrato #${c.id_contrato ?? c.id}`) : 'Sin contrato');
 
 const formatoCLP = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
 
-// Convierte la respuesta de error de la API en { campo: mensaje, general: mensaje }.
 const MENSAJE_CLAVE_SEGURA = 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número o símbolo.';
 
 const claveEsSegura = (clave) =>
@@ -214,10 +212,7 @@ const diasHasta = (iso) => {
 };
 
 const textoDias = (n) => `${n} ${n === 1 ? 'día' : 'días'}`;
-// ============================================================================
 
-// Al editar una fila, sube suavemente hasta el formulario (que se abre arriba de la tabla).
-// El pequeño retraso espera a que React termine de dibujar el formulario.
 const irAlFormulario = (idElemento) => {
     setTimeout(() => {
         document.getElementById(idElemento)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -387,10 +382,10 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const abrirVisorDoc = async ({ url, titulo, subtitulo, folio }) => {
         if (!url) return;
 
-        // 1. Pedimos la URL temporal segura al backend
+        // Pedimos la URL temporal segura al backend
         const urlSegura = await obtenerUrlLecturaS3(url);
 
-        // 2. Normalizamos y abrimos
+        // Normalizamos y abrimos
         const urlNorm = normalizarUrlDocumento(urlSegura);
         setModalDoc({
             abierto: true,
@@ -438,10 +433,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 axios.get('gastos/').catch(() => axios.get('/gastos/')).catch(() => ({ data: [] })),
                 axios.get('/contratos/').catch(() => axios.get('contratos/')).catch(() => ({ data: [] })),
                 axios.get('doc-maquinaria/').catch(() => axios.get('/doc-maquinaria/')).catch(() => ({ data: [] })),
-                axios.get('resumen-kpis/').catch(() => axios.get('/resumen-kpis/')).catch(() => ({ data: {} })) // <--- AGREGAR ESTE ENDPOINT
+                axios.get('resumen-kpis/').catch(() => axios.get('/resumen-kpis/')).catch(() => ({ data: {} })) 
             ]);
 
-            // ...resto del código
 
             setDocumentosMaq(resDocs.data?.results || (Array.isArray(resDocs.data) ? resDocs.data : []));
             setClientes(resCli.data?.results || (Array.isArray(resCli.data) ? resCli.data : []));
@@ -688,7 +682,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         setFiltroGastoMaquina('todos');
         setFiltroGastoContrato('todos');
     };
-    // ===== FILTROS DE PARTES DIARIOS =====
+    //FILTROS DE PARTES DIARIOS 
     const reportesFiltrados = reportes.filter(r => {
         const t = busquedaParte.trim().toLowerCase();
         const maq = maquinarias.find(m => m.id_maquina === r.id_maquina || m.id === r.id_maquina);
@@ -965,8 +959,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
         setErroresMaq({});
 
-        // Si un documento tiene fecha de vencimiento, debe tener archivo (nuevo o ya guardado).
-        // Se revisa ANTES de guardar para no mostrar "guardado" y después un error.
+  
         const documentosRequeridos = [
             { clave: 'soap', etiqueta: 'SOAP', tipoDoc: 'SOAP', campoFecha: 'fecha_venc_soap' },
             { clave: 'rev_tecnica', etiqueta: 'Revisión técnica', tipoDoc: 'REVISIÓN TÉCNICA', campoFecha: 'fecha_venc_rev_tecnica' },
@@ -989,7 +982,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             let idMaqCreada = editandoMaqId;
             let mensajeFinal = '';
 
-            // 1. Guardar o actualizar la máquina (Payload JSON limpio)
+            // Guardar o actualizar la máquina 
             if (editandoMaqId) {
                 await axios.put(`maquinarias/${editandoMaqId}/`, formMaq);
                 maquinaGuardada = true;
@@ -1003,19 +996,17 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 mensajeFinal = 'Maquinaria registrada correctamente.';
             }
 
-            // 2. Auxiliar: Subir a S3 y luego guardar/actualizar en Doc_Maquinaria
+            // Subir a S3 y luego guardar/actualizar en Doc_Maquinaria
             const procesarDocMaquinariaS3 = async (idMaq, tipoDoc, numDoc, fechaVenc, archivoInput) => {
                 if (!fechaVenc && !archivoInput) return;
 
                 const docExistente = obtenerDocMaquina(idMaq, tipoDoc, documentosMaq);
                 let urlFinalS3 = docExistente?.url_archivo || '';
 
-                // Si el usuario subió un archivo nuevo, lo enviamos a S3
                 if (archivoInput) {
                     urlFinalS3 = await subirArchivoAS3(archivoInput);
                 }
 
-                // Si se configuró fecha pero no hay URL previa ni archivo nuevo, detenemos el guardado
                 if (fechaVenc && !urlFinalS3) {
                     throw new Error(`Se requiere adjuntar un archivo para el documento ${tipoDoc}`);
                 }
@@ -1036,7 +1027,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 }
             };
 
-            // 3. Procesar documentos
+            // Procesar documentos
             if (idMaqCreada) {
                 const promesasDocs = [];
                 if (formMaq.fecha_venc_soap || archivosMaq.soap) {
@@ -1171,7 +1162,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             nuevosErrores.fecha_vencimiento_licencia = 'La fecha de vencimiento no puede ser anterior a hoy.';
         }
 
-        // El documento de la licencia es obligatorio: uno nuevo, o el que ya estaba guardado
+        // El documento de la licencia es obligatorio
         const urlLicenciaPrevia = operadorActual?.licencia_url || '';
         if (!archivoLicencia && !urlLicenciaPrevia) {
             nuevosErrores.archivo_licencia = 'Adjunta el documento de la licencia.';
@@ -1184,15 +1175,15 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         setErroresOp({});
 
         try {
-            // 1. Mantenemos la URL anterior si editamos, o vacía si es nuevo
+            // Mantenemos la URL anterior si editamos
             let urlLicenciaS3 = urlLicenciaPrevia;
 
-            // 2. Si el usuario seleccionó un archivo nuevo, lo subimos directo a S3
+            // Si el usuario seleccionó un archivo nuevo, lo subimos directo a S3
             if (archivoLicencia && typeof archivoLicencia === 'object') {
                 urlLicenciaS3 = await subirArchivoAS3(archivoLicencia);
             }
 
-            // 3. Preparamos el payload JSON limpio con la URL en texto
+            // Preparamos el payload JSON limpio con la URL en texto
             const payload = {
                 nombre: formOp.nombre.trim(),
                 apellido: formOp.apellido.trim(),
@@ -1640,7 +1631,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </div>
 
                                     {gastosPorCategoria.length === 0 ? (
-                                        /* ESTADO NEUTRO (EMPTY STATE) PROFESIONAL */
+                                        /* ESTADO NEUTRO */
                                         <div style={{
                                             padding: '32px 16px',
                                             textAlign: 'center',
@@ -1662,7 +1653,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                 fontSize: '18px',
                                                 marginBottom: '4px'
                                             }}>
-                                                💳
+                                            
                                             </div>
                                             <strong style={{ fontSize: '13px', color: modoNoche ? '#f8fafc' : '#0f172a' }}>
                                                 Sin egresos en este período
@@ -1672,7 +1663,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                             </span>
                                         </div>
                                     ) : (
-                                        /* BARRAS DE PROGRESO DE DISTRIBUCIÓN */
+                                        /* BARRAS DE PROGRESO */
                                         <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                                             {gastosPorCategoria.slice(0, 3).map(([cat, monto]) => {
                                                 const pct = totalGastos > 0 ? Math.round((monto / totalGastos) * 100) : 0;
@@ -1700,7 +1691,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                             </div>
                         )}
 
-                        {/* COLUMNA 2: INGRESOS POR CONTRATO */}
+                        {/*INGRESOS POR CONTRATO */}
                         <div className="adm-profit-card">
                             <div className="adm-profit-header">
                                 <div className="adm-profit-title-box">
