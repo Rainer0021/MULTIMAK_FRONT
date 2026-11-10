@@ -82,12 +82,10 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             setReportesRecientes(propios.slice(0, 6));
 
             if (idContrato) {
-                // Se mantiene la selección y se refresca el horómetro desde el servidor
                 const c = dataCon.find((x) => String(x.id_contrato) === String(idContrato));
                 const m = c && c.maquinas.find((x) => String(x.id_maquina) === String(idMaquina));
                 if (m) setHorometroInicial(String(m.horometro_actual ?? 0));
             } else if (dataCon.length === 1) {
-                // Un solo contrato vigente: queda elegido
                 setIdContrato(String(dataCon[0].id_contrato));
                 if (dataCon[0].maquinas.length === 1) seleccionarMaquina(dataCon[0].maquinas[0]);
             }
@@ -274,11 +272,9 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         try {
             let urlFirmaS3 = '';
             
-            // Si el método es foto, subimos la imagen directamente a S3
             if (metodoCertificacion === 'foto' && archivoFoto) {
                 urlFirmaS3 = await subirArchivoAS3(archivoFoto);
             } 
-            // Si es digital, convertimos el canvas en un blob (archivo) y lo subimos a S3
             else if (metodoCertificacion === 'digital' && firmaDibujada && canvasRef.current) {
                 const blobFirma = await new Promise(resolve => canvasRef.current.toBlob(resolve, 'image/png'));
                 const archivoCanvas = new File([blobFirma], `firma_${Date.now()}.png`, { type: 'image/png' });
@@ -336,7 +332,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
             </div>
 
             <div className="op-layout-grid">
-                {/* COLUMNA IZQUIERDA: FORMULARIO DIARIO */}
+                {/*FORMULARIO DIARIO */}
                 <div className="op-card">
                     <form onSubmit={handleSubmit} className="op-form" noValidate>
                         
