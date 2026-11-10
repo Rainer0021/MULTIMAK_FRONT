@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from '../api/axios'; // Importa la instancia centralizada que inyecta el token
+import axios from '../api/axios'; 
 import '../styles/VistaContador.css';
 import { subirArchivoAS3, obtenerUrlLecturaS3 } from '../utils/s3Uploader';
 
@@ -21,7 +21,6 @@ const soloDigitosTelefonoCL = (valor) => {
     return d;
 };
 
-// telefono 9 digitos
 const validarTelefonoCL = (valor) => {
     const d = soloDigitosTelefonoCL(valor);
     if (d.length !== 9 || /^(\d)\1+$/.test(d)) return false;
@@ -36,7 +35,6 @@ const formatearTelefonoCL = (valor) => {
     return `+56 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`;
 };
 
-// Fecha de hoy en hora local 
 const hoyLocalISO = () => new Date().toLocaleDateString('en-CA');
 
 const aFechaLocal = (iso) => {
@@ -50,20 +48,9 @@ const formatoFechaCL = (iso) => {
     return `${d}-${m}-${a}`;
 };
 
-const diasHasta = (iso) => {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    return Math.round((aFechaLocal(iso) - hoy) / 86400000);
-};
-
-const textoDias = (n) => `${n} ${n === 1 ? 'día' : 'días'}`;
-
-// CONTRATOS Y MÁQUINAS OCUPADAS 
 const ESTADOS_CONTRATO_VIGENTES = ['ACTIVO', 'PRORROGADO'];
-
 const nombreDeContrato = (c) => c.nombre_contrato || `Contrato #${c.id_contrato}`;
 
-// Devuelve el contrato vigente que ya usa esa máquina en el período indicado 
 const buscarChoqueMaquina = (contratos, idMaquina, inicio, fin, excluirIdContrato = null) => {
     return (contratos || []).find((c) => {
         if (c.activo === false) return false;
@@ -91,7 +78,6 @@ const extraerErrorApi = (err, defecto) => {
 export default function VistaContador({ modoNoche }) {
     const fechaHoy = hoyLocalISO();
 
-    // Estados de Datos de la API
     const [gastos, setGastos] = useState([]);
     const [reportes, setReportes] = useState([]);
     const [maquinarias, setMaquinarias] = useState([]);
@@ -104,7 +90,6 @@ export default function VistaContador({ modoNoche }) {
     const [cargando, setCargando] = useState(true);
     const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
-    // Filtros y Pestañas
     const [filtroTipo, setFiltroTipo] = useState('todos');
     const [busqueda, setBusqueda] = useState('');
     const [busquedaContratoContador, setBusquedaContratoContador] = useState('');
@@ -112,7 +97,6 @@ export default function VistaContador({ modoNoche }) {
 
     const [mostrarFormContrato, setMostrarFormContrato] = useState(false);
 
-    // FORMULARIO NUEVO CONTRATO
     const [formContrato, setFormContrato] = useState({
         nombre_contrato: '',
         id_cliente: '',
@@ -126,29 +110,29 @@ export default function VistaContador({ modoNoche }) {
 
     const [erroresFormContrato, setErroresFormContrato] = useState({});
 
-    // Modales de Trabajo y Formulario Factura / HES
-    const [modalHes, setModalHes] = useState({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA' });
+    // Modales de Trabajo y Formulario Factura / HES (incluyendo archivoHES)
+    const [modalHes, setModalHes] = useState({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA', archivoHES: null });
     const [modalFactura, setModalFactura] = useState({ abierto: false, idHes: '', folioDTE: '', montoNeto: '', iva: 0, montoTotal: 0 });
     const [modalProrroga, setModalProrroga] = useState({ abierto: false, idContrato: null, nuevaFechaFin: '' });
     const [modalDoc, setModalDoc] = useState({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false });
 
     // Carpeta Tributaria Digital
     const [archivoDocEmpresa, setArchivoDocEmpresa] = useState(null);
-    const [tipoDocEmpresa, setTipoDocEmpresa] = useState('F30');
+    const [nombreDocEmpresa, setNombreDocEmpresa] = useState('');
 
 
     const cargarDatosFinancieros = async () => {
         setCargando(true);
         try {
             const [resGas, resRep, resMaq, resCont, resCli, resHes, resFact, resDocs] = await Promise.all([
-                axios.get('/gastos/').catch(() => axios.get('/api/gastos/')).catch(() => ({ data: [] })),
-                axios.get('/reports/').catch(() => axios.get('/api/reports/')).catch(() => ({ data: [] })),
-                axios.get('/maquinarias/').catch(() => axios.get('/api/maquinarias/')).catch(() => ({ data: [] })),
-                axios.get('/contratos/').catch(() => axios.get('/api/contratos/')).catch(() => ({ data: [] })),
-                axios.get('/clientes/').catch(() => axios.get('/api/clientes/')).catch(() => ({ data: [] })),
-                axios.get('/hes/').catch(() => axios.get('/api/hes/')).catch(() => ({ data: [] })),
-                axios.get('/facturas/').catch(() => axios.get('/api/facturas/')).catch(() => ({ data: [] })),
-                axios.get('/doc-empresa/').catch(() => axios.get('/api/doc-empresa/')).catch(() => ({ data: [] }))
+                axios.get('/gastos/').catch(() => axios.get('/gastos/')).catch(() => ({ data: [] })),
+                axios.get('/reports/').catch(() => axios.get('/reports/')).catch(() => ({ data: [] })),
+                axios.get('/maquinarias/').catch(() => axios.get('/maquinarias/')).catch(() => ({ data: [] })),
+                axios.get('/contratos/').catch(() => axios.get('/contratos/')).catch(() => ({ data: [] })),
+                axios.get('/clientes/').catch(() => axios.get('/clientes/')).catch(() => ({ data: [] })),
+                axios.get('/hes/').catch(() => axios.get('/hes/')).catch(() => ({ data: [] })),
+                axios.get('/facturas/').catch(() => axios.get('/facturas/')).catch(() => ({ data: [] })),
+                axios.get('/doc-empresa/').catch(() => axios.get('/doc-empresa/')).catch(() => ({ data: [] }))
             ]);
 
             setGastos(resGas.data?.results || (Array.isArray(resGas.data) ? resGas.data : []));
@@ -160,7 +144,7 @@ export default function VistaContador({ modoNoche }) {
             setFacturas(resFact.data?.results || (Array.isArray(resFact.data) ? resFact.data : []));
             setDocsEmpresa(resDocs.data?.results || (Array.isArray(resDocs.data) ? resDocs.data : []));
         } catch (err) {
-            console.error('No se pudieron cargar los datos contables. Recarga la página.', err);
+            console.error('No se pudieron cargar los datos contables.', err);
         } finally {
             setCargando(false);
         }
@@ -175,7 +159,6 @@ export default function VistaContador({ modoNoche }) {
         setTimeout(() => setMensaje({ texto: '', tipo: '' }), 4000);
     };
 
-    // FUNCIONES DEL FORMULARIO DE MAQUINARIAS 
     const agregarFilaMaquina = () => {
         setFormContrato(prev => ({
             ...prev,
@@ -204,53 +187,22 @@ export default function VistaContador({ modoNoche }) {
         e.preventDefault();
         const errores = {};
 
-        if (!formContrato.id_cliente) {
-            errores.id_cliente = 'Selecciona un cliente';
-        }
+        if (!formContrato.id_cliente) errores.id_cliente = 'Selecciona un cliente';
+        if (!formContrato.fecha_inicio) errores.fecha_inicio = 'Ingresa la fecha de inicio.';
+        if (!formContrato.fecha_fin) errores.fecha_fin = 'Ingresa la fecha de término.';
 
-        if (!formContrato.fecha_inicio) {
-            errores.fecha_inicio = 'Ingresa la fecha de inicio.';
-        } else if (formContrato.fecha_inicio < fechaHoy) {
-            errores.fecha_inicio = 'La fecha de inicio no puede ser anterior a hoy.';
-        }
-        if (!formContrato.fecha_fin) {
-            errores.fecha_fin = 'Ingresa la fecha de término pactada.';
-        } else if (formContrato.fecha_inicio && formContrato.fecha_fin < formContrato.fecha_inicio) {
-            errores.fecha_fin = 'La fecha de término no puede ser anterior a la de inicio.';
-        }
-
-        const erroresMaquinas = formContrato.maquinas_asignadas.map((m, i) => {
+        const erroresMaquinas = formContrato.maquinas_asignadas.map((m) => {
             const fila = { id_maquina: '', tarifa_hora: '', detalle: '' };
-            if (!m.id_maquina) {
-                fila.id_maquina = 'Selecciona un equipo';
-            } else {
-                const repetida = formContrato.maquinas_asignadas.some((o, j) => j !== i && String(o.id_maquina) === String(m.id_maquina));
-                const choque = buscarChoqueMaquina(contratos, m.id_maquina, formContrato.fecha_inicio, formContrato.fecha_fin || formContrato.fecha_inicio);
-                const maq = maquinarias.find(x => String(x.id_maquina || x.id) === String(m.id_maquina));
-                const patente = maq ? maq.patente : `#${m.id_maquina}`;
-                if (repetida) {
-                    fila.id_maquina = 'Repetida';
-                    fila.detalle = `La máquina ${patente} está repetida en este contrato.`;
-                } else if (choque) {
-                    const hasta = choque.fecha_fin ? formatoFechaCL(choque.fecha_fin) : 'sin término';
-                    fila.id_maquina = 'Ocupada';
-                    fila.detalle = `La máquina ${patente} ya está asignada a «${nombreDeContrato(choque)}» (hasta ${hasta}). Elige otra o cambie las fechas.`;
-                }
-            }
+            if (!m.id_maquina) fila.id_maquina = 'Selecciona equipo';
             if (!m.tarifa_hora) fila.tarifa_hora = 'Ingresa tarifa';
-            else if (parseInt(m.tarifa_hora, 10) <= 0) fila.tarifa_hora = 'La tarifa debe ser mayor a $0';
             return fila;
         });
 
-        const hayErrorMaquina = erroresMaquinas.some(m => m.id_maquina || m.tarifa_hora);
-
-        if (Object.keys(errores).length > 0 || hayErrorMaquina) {
+        if (Object.keys(errores).length > 0 || erroresMaquinas.some(m => m.id_maquina || m.tarifa_hora)) {
             setErroresFormContrato({ ...errores, maquinas: erroresMaquinas });
-            mostrarNotificacion('Revisa los campos marcado en rojo.', 'error');
+            mostrarNotificacion('Revisa los campos en rojo.', 'error');
             return;
         }
-
-        setErroresFormContrato({});
 
         try {
             const payloadContrato = {
@@ -261,53 +213,30 @@ export default function VistaContador({ modoNoche }) {
                 estado_contrato: formContrato.estado_contrato
             };
 
-            const resContrato = await axios.post('contratos/', payloadContrato)
-                .catch(() => axios.post('/contratos/', payloadContrato));
-
+            const resContrato = await axios.post('contratos/', payloadContrato).catch(() => axios.post('/contratos/', payloadContrato));
             const idNuevoContrato = resContrato.data?.id_contrato || resContrato.data?.id;
 
             if (idNuevoContrato) {
-                const promesas = formContrato.maquinas_asignadas.map(m => {
-                    const payloadIntermedia = {
+                const promesas = formContrato.maquinas_asignadas.map(m => 
+                    axios.post('contrato-maquinarias/', {
                         id_contrato: idNuevoContrato,
                         id_maquina: parseInt(m.id_maquina, 10),
                         tarifa_hora: parseInt(m.tarifa_hora, 10)
-                    };
-                    return axios.post('contrato-maquinarias/', payloadIntermedia)
-                        .catch(() => axios.post('/contrato-maquinarias/', payloadIntermedia));
-                });
-
-                try {
-                    await Promise.all(promesas);
-                } catch (errMaq) {
-                    // Revierte: no se deja un contrato sin sus máquinas.
-                    await axios.delete(`contratos/${idNuevoContrato}/`).catch(() => {});
-                    throw errMaq;
-                }
+                    }).catch(() => axios.post('/contrato-maquinarias/', {
+                        id_contrato: idNuevoContrato,
+                        id_maquina: parseInt(m.id_maquina, 10),
+                        tarifa_hora: parseInt(m.tarifa_hora, 10)
+                    }))
+                );
+                await Promise.all(promesas);
             }
 
             mostrarNotificacion('Contrato registrado correctamente.');
             setMostrarFormContrato(false);
             cargarDatosFinancieros();
         } catch (err) {
-            console.error("Error guardando contrato:", err);
-            mostrarNotificacion(extraerErrorApi(err, 'No se pudo guardar el contrato. Intenta nuevamente.'), 'error');
+            mostrarNotificacion(extraerErrorApi(err, 'No se pudo guardar el contrato.'), 'error');
         }
-    };
-
-    const contratoEnProrroga = () =>
-        contratos.find(c => String(c.id_contrato) === String(modalProrroga.idContrato)) || null;
-
-    // validaciones fecha
-    const fechaMinProrroga = () => {
-        const c = contratoEnProrroga();
-        if (c && c.fecha_fin) {
-            const d = aFechaLocal(c.fecha_fin);
-            d.setDate(d.getDate() + 1);
-            const siguiente = d.toLocaleDateString('en-CA');
-            return siguiente > fechaHoy ? siguiente : fechaHoy;
-        }
-        return fechaHoy;
     };
 
     const handleProrrogarContrato = async (e) => {
@@ -316,53 +245,59 @@ export default function VistaContador({ modoNoche }) {
             mostrarNotificacion('Selecciona la nueva fecha de término.', 'error');
             return;
         }
-        const c = contratoEnProrroga();
-        if (modalProrroga.nuevaFechaFin < fechaMinProrroga()) {
-            const actual = c && c.fecha_fin ? ` (término actual: ${formatoFechaCL(c.fecha_fin)})` : '';
-            mostrarNotificacion(`La nueva fecha debe ser posterior al término actual${actual}.`, 'error');
-            return;
-        }
-        if (c) {
-            const desdeExtension = c.fecha_fin || c.fecha_inicio;
-            for (const r of (c.maquinas_contrato || [])) {
-                const choque = buscarChoqueMaquina(contratos, r.id_maquina, desdeExtension, modalProrroga.nuevaFechaFin, c.id_contrato);
-                if (choque) {
-                    mostrarNotificacion(`No se puede prorrogar: la máquina ${r.maquina_patente || '#' + r.id_maquina} ya está asignada a «${nombreDeContrato(choque)}» en ese período.`, 'error');
-                    return;
-                }
-            }
-        }
         try {
             const payload = { fecha_fin: modalProrroga.nuevaFechaFin, estado_contrato: 'PRORROGADO' };
-            await axios.patch(`/contratos/${modalProrroga.idContrato}/`, payload).catch(() => axios.patch(`/api/contratos/${modalProrroga.idContrato}/`, payload));
+            await axios.patch(`/contratos/${modalProrroga.idContrato}/`, payload).catch(() => axios.patch(`/contratos/${modalProrroga.idContrato}/`, payload));
             mostrarNotificacion('Prórroga guardada correctamente.');
             setModalProrroga({ abierto: false, idContrato: null, nuevaFechaFin: '' });
             cargarDatosFinancieros();
         } catch (err) {
-            mostrarNotificacion(extraerErrorApi(err, 'No se pudo aplicar la prórroga. Intenta nuevamente.'), 'error');
+            mostrarNotificacion('No se pudo aplicar la prórroga.', 'error');
         }
     };
 
+    // REGISTRAR HES CON ARCHIVO OBLIGATORIO SUBIDO A S3 Y DESACTIVACIÓN AUTOMÁTICA DE REPORTES
     const handleRegistrarHES = async (e) => {
         e.preventDefault();
         if (!modalHes.numeroHes || !modalHes.idContrato) {
             mostrarNotificacion('Selecciona contrato e ingresa el número de HES.', 'error');
             return;
         }
+        if (!modalHes.archivoHES) {
+            mostrarNotificacion('Es obligatorio adjuntar el documento de la HES.', 'error');
+            return;
+        }
+
         try {
+            // Sube el documento HES obligatorio a S3
+            const urlS3Hes = await subirArchivoAS3(modalHes.archivoHES);
+
             const payload = {
                 id_contrato: parseInt(modalHes.idContrato, 10),
                 numero_hes: modalHes.numeroHes.trim(),
                 total_horas_aprobadas: parseFloat(modalHes.totalHoras) || 0,
                 fecha_emision: fechaHoy,
-                estado: modalHes.estado
+                estado: modalHes.estado,
+                url_archivo: urlS3Hes // Almacena la URL segura de S3
             };
-            await axios.post('/hes/', payload).catch(() => axios.post('/api/hes/', payload));
-            mostrarNotificacion(`HES N° ${modalHes.numeroHes} registrada en estado [${modalHes.estado}].`);
-            setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA' });
+
+            // 1. Guardar HES en la API
+            await axios.post('/hes/', payload).catch(() => axios.post('/hes/', payload));
+
+            // 2. Desactivar automáticamente los reportes contabilizados de este contrato
+            const reportesAfectados = reportes.filter(r => String(r.id_contrato) === String(modalHes.idContrato) && r.activo !== false);
+            await Promise.all(
+                reportesAfectados.map(r => 
+                    axios.patch(`/reports/${r.id_report}/`, { activo: false }).catch(() => axios.patch(`/reports/${r.id_report}/`, { activo: false }))
+                )
+            );
+
+            mostrarNotificacion(`HES N° ${modalHes.numeroHes} registrada en S3 y reportes desactivados.`);
+            setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA', archivoHES: null });
             cargarDatosFinancieros();
         } catch (err) {
-            mostrarNotificacion('No se pudo registrar la HES. Intenta nuevamente.', 'error');
+            console.error('Error al registrar HES:', err);
+            mostrarNotificacion('No se pudo registrar la HES o subir el archivo a S3.', 'error');
         }
     };
 
@@ -388,7 +323,7 @@ export default function VistaContador({ modoNoche }) {
 
         const hesSeleccionada = hesList.find(h => String(h.id_hes) === String(modalFactura.idHes));
         if (hesSeleccionada && hesSeleccionada.estado.toUpperCase() !== 'APROBADA') {
-            mostrarNotificacion(`Bloqueo de Facturación: La HES N° ${hesSeleccionada.numero_hes} está '${hesSeleccionada.estado}'. Debe estar APROBADA.`, 'error');
+            mostrarNotificacion(`Bloqueo: La HES N° ${hesSeleccionada.numero_hes} debe estar APROBADA.`, 'error');
             return;
         }
 
@@ -402,7 +337,7 @@ export default function VistaContador({ modoNoche }) {
                 monto_total: parseInt(modalFactura.montoTotal, 10),
                 estado_pago: 'EMITIDA'
             };
-            await axios.post('/facturas/', payload).catch(() => axios.post('/api/facturas/', payload));
+            await axios.post('/facturas/', payload).catch(() => axios.post('/facturas/', payload));
             mostrarNotificacion(`Factura Electrónica DTE N° ${modalFactura.folioDTE} emitida correctamente.`);
             setModalFactura({ abierto: false, idHes: '', folioDTE: '', montoNeto: '', iva: 0, montoTotal: 0 });
             cargarDatosFinancieros();
@@ -414,41 +349,42 @@ export default function VistaContador({ modoNoche }) {
     const handleSubirDocEmpresa = async (e) => {
         e.preventDefault();
         if (!archivoDocEmpresa) {
-            mostrarNotificacion('Selecciona un archivo PDF o una imagen.', 'error');
+            mostrarNotificacion('Selecciona un archivo PDF o imagen.', 'error');
+            return;
+        }
+        if (!nombreDocEmpresa.trim()) {
+            mostrarNotificacion('Ingresa el nombre o título del documento.', 'error');
             return;
         }
 
         try {
             const urlS3 = await subirArchivoAS3(archivoDocEmpresa);
-            
             const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
             const idRealUsuario = sesionStorage.id_usuario || sesionStorage.id;
 
             const payload = {
-                tipo_documento: tipoDocEmpresa,
+                tipo_documento: nombreDocEmpresa.trim(),
                 fecha_emision: fechaHoy,
                 fecha_carga: fechaHoy,
-                url_archivo: urlS3, // URL directa de S3
+                url_archivo: urlS3, 
                 id_usuario: idRealUsuario,
                 activo: true
             };
 
-            await axios.post('doc-empresa/', payload);
+            await axios.post('doc-empresa/', payload).catch(() => axios.post('/doc-empresa/', payload));
             
-            mostrarNotificacion(`Documento [${tipoDocEmpresa}] agregado a la Carpeta Tributaria.`);
+            mostrarNotificacion(`Documento [${nombreDocEmpresa}] agregado correctamente.`);
             setArchivoDocEmpresa(null);
+            setNombreDocEmpresa('');
             cargarDatosFinancieros();
         } catch (err) {
-            console.error('Error al subir documento de empresa:', err);
-            mostrarNotificacion('No se pudo subir el documento. Intenta nuevamente.', 'error');
+            mostrarNotificacion('No se pudo subir el documento.', 'error');
         }
     };
 
     const abrirVisor = async ({ url, titulo, subtitulo }) => {
         if (!url) return;
-        
         const urlSegura = await obtenerUrlLecturaS3(url);
-        
         const urlNorm = normalizarUrl(urlSegura);
         setModalDoc({
             abierto: true,
@@ -473,40 +409,7 @@ export default function VistaContador({ modoNoche }) {
                 tarifa: m.tarifa_hora || 0
             }));
         }
-
-        if (Array.isArray(cont.detalle_maquinas) && cont.detalle_maquinas.length > 0) {
-            return cont.detalle_maquinas.map(d => {
-                const idBuscado = String(d.id_maquina || d.id || d);
-                const maq = maquinarias.find(m => String(m.id_maquina || m.id) === idBuscado);
-                return {
-                    patente: maq ? `${maq.patente}` : `Equipo #${idBuscado}`,
-                    tipo: maq?.tipo || 'Equipo',
-                    tarifa: d.tarifa_hora || cont.tarifa_hora || 0
-                };
-            });
-        }
-
-        const reportesAsociados = reportes.filter(r =>
-            String(r.id_contrato?.id_contrato || r.id_contrato) === String(cont.id_contrato || cont.id)
-        );
-        const idsUnicos = [...new Set(reportesAsociados.map(r => String(r.id_maquina?.id_maquina || r.id_maquina)))].filter(Boolean);
-
-        if (idsUnicos.length > 0) {
-            return idsUnicos.map(id => {
-                const maq = maquinarias.find(m => String(m.id_maquina || m.id) === id);
-                return {
-                    patente: maq ? `${maq.patente}` : `Equipo #${id}`,
-                    tipo: maq?.tipo || 'Equipo',
-                    tarifa: cont.tarifa_hora || 0
-                };
-            });
-        }
-
-        return [{
-            patente: 'Sin equipo asignado',
-            tipo: 'Equipo',
-            tarifa: 0
-        }];
+        return [{ patente: 'Sin equipo asignado', tipo: 'Equipo', tarifa: 0 }];
     };
 
     const resumenPorContrato = contratos.map((cont) => {
@@ -514,13 +417,8 @@ export default function VistaContador({ modoNoche }) {
             (r) => String(r.id_contrato) === String(cont.id_contrato)
         );
 
-        const totalHoras = reportesAsociados.reduce(
-            (acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0
-        );
-
-        // El servidor valoriza cada parte con la tarifa real de la máquina en el contrato (antes se usaba $28.000 fijo).
+        const totalHoras = reportesAsociados.reduce((acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0);
         const subtotal = reportesAsociados.reduce((acc, r) => acc + (parseFloat(r.ingreso_estimado) || 0), 0);
-        const tarifaBase = totalHoras > 0 ? Math.round(subtotal / totalHoras) : 0;
         const clienteObj = clientes.find(c => String(c.id_cliente || c.id) === String(cont.id_cliente));
         const clienteNombre = cont.cliente_nombre || clienteObj?.razon_social || clienteObj?.nombre || `Cliente #${cont.id_cliente}`;
 
@@ -531,7 +429,6 @@ export default function VistaContador({ modoNoche }) {
             cliente: clienteNombre,
             listaMaquinas: obtenerMaquinasDeContrato(cont),
             totalHoras,
-            tarifaBase,
             subtotal,
             hes: hesAsociada,
             cantidadTurnos: reportesAsociados.length
@@ -539,28 +436,20 @@ export default function VistaContador({ modoNoche }) {
     });
 
     const totalGastosAcumulados = gastos.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
-    const gastosCombustible = gastos
-        .filter((g) => (g.categoria_gasto || g.tipo_gasto || '').toLowerCase().includes('combus'))
-        .reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
-    const gastosMantenimiento = gastos
-        .filter((g) => {
-            const t = (g.categoria_gasto || g.tipo_gasto || '').toLowerCase();
-            return t.includes('mant') || t.includes('repuesto') || t.includes('taller');
-        })
-        .reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
+    const gastosCombustible = gastos.filter((g) => (g.categoria_gasto || '').toLowerCase().includes('combus')).reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
+    const gastosMantenimiento = gastos.filter((g) => {
+        const t = (g.categoria_gasto || '').toLowerCase();
+        return t.includes('mant') || t.includes('repuesto');
+    }).reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
 
-    const totalHorasFacturables = reportes.reduce((acc, r) => acc + (parseFloat(r.horas_trabajadas) || 0), 0);
     const totalIngresosEstimados = resumenPorContrato.reduce((acc, c) => acc + c.subtotal, 0);
-
     const margenNeto = totalIngresosEstimados - totalGastosAcumulados;
     const margenPct = totalIngresosEstimados > 0 ? ((margenNeto / totalIngresosEstimados) * 100).toFixed(1) : '0.0';
 
     const gastosFiltrados = gastos.filter((g) => {
-        const tipo = g.categoria_gasto || g.tipo_gasto || 'General';
+        const tipo = g.categoria_gasto || 'General';
         const coincideTipo = filtroTipo === 'todos' || tipo.toLowerCase() === filtroTipo.toLowerCase();
-        const patenteTexto = obtenerPatente(g.id_maquina, g.id_maquina_detalle);
-        const folioTexto = g.numero_comprobante || '';
-        const textoCompleto = `${g.descripcion || ''} ${tipo} ${patenteTexto} ${folioTexto}`.toLowerCase();
+        const textoCompleto = `${g.descripcion || ''} ${tipo} ${g.numero_comprobante || ''}`.toLowerCase();
         return coincideTipo && textoCompleto.includes(busqueda.toLowerCase());
     });
 
@@ -568,8 +457,7 @@ export default function VistaContador({ modoNoche }) {
         const term = busquedaContratoContador.toLowerCase();
         const cliente = (c.cliente_nombre || c.razon_social || '').toLowerCase();
         const nombreCto = (c.nombre_contrato || '').toLowerCase();
-        const idCto = String(c.id_contrato || c.id || '').toLowerCase();
-        return cliente.includes(term) || nombreCto.includes(term) || idCto.includes(term);
+        return cliente.includes(term) || nombreCto.includes(term);
     });
 
     return (
@@ -579,9 +467,7 @@ export default function VistaContador({ modoNoche }) {
                     <span className="cnt-header-tag">Departamento de finanzas • MULTIMAK 360</span>
                     <h1 className="cnt-header-title">Panel Contable y Liquidación de Faena</h1>
                 </div>
-                <button onClick={cargarDatosFinancieros} className="cnt-btn-sync">
-                    Actualizar
-                </button>
+                <button onClick={cargarDatosFinancieros} className="cnt-btn-sync">Actualizar</button>
             </div>
 
             {mensaje.texto && (
@@ -595,91 +481,62 @@ export default function VistaContador({ modoNoche }) {
                 <div className="cnt-kpi-card ingresos">
                     <span className="cnt-kpi-sub">Ingresos Brutos Faena</span>
                     <div className="cnt-kpi-value">${totalIngresosEstimados.toLocaleString('es-CL')}</div>
-                    <span className="cnt-kpi-foot">{totalHorasFacturables.toFixed(1)} hrs computadas</span>
                 </div>
-
                 <div className="cnt-kpi-card gastos">
                     <span className="cnt-kpi-sub">Gasto Total de la Flota</span>
                     <div className="cnt-kpi-value">${totalGastosAcumulados.toLocaleString('es-CL')}</div>
-                    <span className="cnt-kpi-foot">Egresos respaldados</span>
                 </div>
-
                 <div className={`cnt-kpi-card ${margenNeto >= 0 ? 'margen-pos' : 'margen-neg'}`}>
                     <span className="cnt-kpi-sub">Margen Operativo Neto</span>
-                    <div className="cnt-kpi-value">
-                        {margenNeto < 0 ? '-' : ''}${Math.abs(margenNeto).toLocaleString('es-CL')}
-                    </div>
+                    <div className="cnt-kpi-value">${Math.abs(margenNeto).toLocaleString('es-CL')}</div>
                     <span className="cnt-kpi-foot">Rentabilidad: <strong>{margenPct}%</strong></span>
                 </div>
-
                 <div className="cnt-kpi-card combustible">
                     <span className="cnt-kpi-sub">Combustible</span>
                     <div className="cnt-kpi-value">${gastosCombustible.toLocaleString('es-CL')}</div>
-                    <span className="cnt-kpi-foot">Diésel cargado</span>
                 </div>
-
                 <div className="cnt-kpi-card mantenimiento">
                     <span className="cnt-kpi-sub">Taller y Repuestos</span>
                     <div className="cnt-kpi-value">${gastosMantenimiento.toLocaleString('es-CL')}</div>
-                    <span className="cnt-kpi-foot">Mantenciones</span>
                 </div>
             </div>
 
+            {/* NAVEGACIÓN DE PESTAÑAS */}
             <div className="cnt-nav-group">
-                <button
-                    type="button"
-                    onClick={() => setPestaña('facturacion_hes')}
-                    className={`cnt-nav-btn ${pestaña === 'facturacion_hes' ? 'active' : ''}`}
-                >
-                    Facturación HES
-                    <span className="cnt-nav-badge">{resumenPorContrato.length}</span>
+                <button type="button" onClick={() => setPestaña('Gestion HES')} className={`cnt-nav-btn ${pestaña === 'Gestion HES' ? 'active' : ''}`}>
+                    Gestion HES <span className="cnt-nav-badge">{resumenPorContrato.length}</span>
                 </button>
-
-                <button
-                    type="button"
-                    onClick={() => setPestaña('contratos')}
-                    className={`cnt-nav-btn ${pestaña === 'contratos' ? 'active' : ''}`}
-                >
-                    Contratos y tarifas
-                    <span className="cnt-nav-badge">{contratos.length}</span>
+                <button type="button" onClick={() => setPestaña('Facturacion')} className={`cnt-nav-btn ${pestaña === 'Facturacion' ? 'active' : ''}`}>
+                    Facturacion <span className="cnt-nav-badge">{hesList.length}</span>
                 </button>
-
-                <button
-                    type="button"
-                    onClick={() => setPestaña('carpeta_tributaria')}
-                    className={`cnt-nav-btn ${pestaña === 'carpeta_tributaria' ? 'active' : ''}`}
-                >
-                    Carpeta Tributaria
-                    <span className="cnt-nav-badge">{docsEmpresa.length}</span>
+                <button type="button" onClick={() => setPestaña('contratos')} className={`cnt-nav-btn ${pestaña === 'contratos' ? 'active' : ''}`}>
+                    Contratos y Tarifas <span className="cnt-nav-badge">{contratos.length}</span>
                 </button>
-
-                <button
-                    type="button"
-                    onClick={() => setPestaña('gastos')}
-                    className={`cnt-nav-btn ${pestaña === 'gastos' ? 'active' : ''}`}
-                >
+                <button type="button" onClick={() => setPestaña('carpeta_tributaria')} className={`cnt-nav-btn ${pestaña === 'carpeta_tributaria' ? 'active' : ''}`}>
+                    Carpeta Tributaria <span className="cnt-nav-badge">{docsEmpresa.length}</span>
+                </button>
+                <button type="button" onClick={() => setPestaña('gastos')} className={`cnt-nav-btn ${pestaña === 'gastos' ? 'active' : ''}`}>
                     Egresos <span>({gastos.length})</span>
                 </button>
             </div>
 
-            {pestaña === 'facturacion_hes' && (
+            {/* PESTAÑA 1: FACTURACIÓN HES (SOLO CONCILIACIÓN Y ESTADO, SIN EMITIR FACTURA AQUÍ) */}
+            {pestaña === 'Gestion HES' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="cnt-panel-box">
                         <div className="cnt-panel-header">
                             <div>
-                                <h3 className="cnt-panel-title">Conciliación de Horas y Facturación por Contrato</h3>
-                                <p className="cnt-panel-sub">
-                                    Acumula los turnos diarios por contrato/equipo para asociar la HES y emitir la factura electrónica DTE.
-                                </p>
+                                <h3 className="cnt-panel-title">Conciliación de Horas y Estado HES por Contrato</h3>
+                                <p className="cnt-panel-sub">Control general de turnos ejecutados y registro de HES asociadas.</p>
                             </div>
                         </div>
 
-                        <div className="cnt-table-wrap">
+                        <div className="cnt-table-wrap" style={{ marginTop: '16px' }}>
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
                                         <th>Cliente / Mandante</th>
-                                        <th>Equipos y tarifas asignadas</th>
+                                        <th>Equipos y tarifas</th>
                                         <th>Turnos</th>
                                         <th className="right">Horas ejecutadas</th>
                                         <th className="right">Total estimado</th>
@@ -689,25 +546,19 @@ export default function VistaContador({ modoNoche }) {
                                 </thead>
                                 <tbody>
                                     {resumenPorContrato.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="7" className="cnt-no-data">No hay contratos con horas registradas.</td>
-                                        </tr>
+                                        <tr><td colSpan="7" className="cnt-no-data">No hay contratos con horas registradas.</td></tr>
                                     ) : (
                                         resumenPorContrato.map((item) => {
                                             const hesExistente = item.hes;
-                                            const tieneFactura = facturas.some(f => f.id_hes === hesExistente?.id_hes || f.id_hes?.id_hes === hesExistente?.id_hes);
-
                                             return (
                                                 <tr key={item.id_contrato}>
                                                     <td className="bold">{item.cliente}</td>
                                                     <td>
-                                                        <div className="cnt-contrato-cell">
-                                                            {item.listaMaquinas.map((m, idx) => (
-                                                                <div key={idx} style={{ fontSize: '12px' }}>
-                                                                    <strong className="mono">{m.patente}</strong> ({m.tipo}) - <span style={{ color: '#16a34a', fontWeight: 'bold' }}>${parseInt(m.tarifa, 10).toLocaleString('es-CL')}/h</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                        {item.listaMaquinas.map((m, idx) => (
+                                                            <div key={idx} style={{ fontSize: '12px' }}>
+                                                                <strong className="mono">{m.patente}</strong> - <span style={{ color: '#16a34a', fontWeight: 'bold' }}>${parseInt(m.tarifa, 10).toLocaleString('es-CL')}/h</span>
+                                                            </div>
+                                                        ))}
                                                     </td>
                                                     <td className="cnt-panel-sub">{item.cantidadTurnos} turnos</td>
                                                     <td className="horas-val right">{item.totalHoras.toFixed(1)} h</td>
@@ -718,39 +569,112 @@ export default function VistaContador({ modoNoche }) {
                                                                 HES N° {hesExistente.numero_hes} ({hesExistente.estado})
                                                             </span>
                                                         ) : (
-                                                            <span className="cnt-badge-hes pendiente"> HES Pendiente</span>
+                                                            <span className="cnt-badge-hes pendiente">HES Pendiente</span>
                                                         )}
                                                     </td>
                                                     <td className="right">
                                                         {!hesExistente ? (
                                                             <button
                                                                 className="cnt-btn-row-act hes"
-                                                                onClick={() => setModalHes({ abierto: true, idContrato: item.id_contrato, numeroHes: '', totalHoras: item.totalHoras, estado: 'APROBADA' })}
+                                                                onClick={() => setModalHes({ abierto: true, idContrato: item.id_contrato, numeroHes: '', totalHoras: item.totalHoras, estado: 'APROBADA', archivoHES: null })}
                                                             >
                                                                 + Registrar HES
                                                             </button>
-                                                        ) : tieneFactura ? (
-                                                            <span className="cnt-badge-hes aprobada">Facturada</span>
-                                                        ) : hesExistente.estado === 'APROBADA' ? (
+                                                        ) : (
+                                                            <span style={{ fontSize: '11px', color: '#64748b' }}>Registrada en Gestión HES</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PESTAÑA 2: GESTIÓN HES & FACTURAS (AQUÍ SÍ ESTÁ EL BOTÓN DE EMITIR FACTURA Y ADJUNTO S3) */}
+            {pestaña === 'Facturacion' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="cnt-panel-box">
+                        <div className="cnt-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <h3 className="cnt-panel-title">Hojas de entrada de servicio emitidas (HES) y Facturación</h3>
+                                <p className="cnt-panel-sub">Visualiza el documento HES respaldado en S3, verifica su estado y emite facturas electrónicas a la API.</p>
+                            </div>
+                        </div>
+
+                        <div className="cnt-table-wrap" style={{ marginTop: '16px' }}>
+                            <table className="cnt-table">
+                                <thead>
+                                    <tr>
+                                        <th>N° HES</th>
+                                        <th>Contrato / Cliente</th>
+                                        <th>Fecha Emisión</th>
+                                        <th className="right">Horas Aprobadas</th>
+                                        <th>Documento HES (S3)</th>
+                                        <th>Estado</th>
+                                        <th className="right">Acción API (Facturación)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {hesList.length === 0 ? (
+                                        <tr><td colSpan="7" className="cnt-no-data">No hay HES registradas.</td></tr>
+                                    ) : (
+                                        hesList.map((hes) => {
+                                            const contratoAsociado = contratos.find(c => String(c.id_contrato) === String(hes.id_contrato?.id_contrato || hes.id_contrato));
+                                            const facturaEmitida = facturas.find(f => String(f.id_hes?.id_hes || f.id_hes) === String(hes.id_hes));
+                                            const urlDocHes = hes.url_archivo || hes.archivo;
+
+                                            return (
+                                                <tr key={hes.id_hes}>
+                                                    <td className="bold mono">N° {hes.numero_hes}</td>
+                                                    <td>{contratoAsociado?.nombre_contrato || contratoAsociado?.cliente_nombre || `Contrato #${hes.id_contrato}`}</td>
+                                                    <td className="mono">{hes.fecha_emision}</td>
+                                                    <td className="right mono">{hes.total_horas_aprobadas} h</td>
+                                                    <td>
+                                                        {urlDocHes ? (
+                                                            <button
+                                                                type="button"
+                                                                className="cnt-btn-s3"
+                                                                onClick={() => abrirVisor({ url: urlDocHes, titulo: `HES N° ${hes.numero_hes}` })}
+                                                            >
+                                                                Ver HES (S3)
+                                                            </button>
+                                                        ) : (
+                                                            <span className="cnt-panel-sub">Sin archivo</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span className={`cnt-badge-hes ${hes.estado === 'APROBADA' ? 'aprobada' : 'pendiente'}`}>
+                                                            {hes.estado}
+                                                        </span>
+                                                    </td>
+                                                    <td className="right">
+                                                        {facturaEmitida ? (
+                                                            <span className="cnt-badge-hes aprobada">Facturada (DTE #{facturaEmitida.folio})</span>
+                                                        ) : hes.estado === 'APROBADA' ? (
                                                             <button
                                                                 className="cnt-btn-row-act facturar"
                                                                 onClick={() => {
-                                                                    const neto = item.subtotal;
-                                                                    const iva = Math.round(neto * 0.19);
+                                                                    const netoEst = Math.round((hes.total_horas_aprobadas || 0) * 30000);
+                                                                    const ivaCalc = Math.round(netoEst * 0.19);
                                                                     setModalFactura({
                                                                         abierto: true,
-                                                                        idHes: hesExistente.id_hes,
+                                                                        idHes: hes.id_hes,
                                                                         folioDTE: '',
-                                                                        montoNeto: neto,
-                                                                        iva: iva,
-                                                                        montoTotal: neto + iva
+                                                                        montoNeto: netoEst,
+                                                                        iva: ivaCalc,
+                                                                        montoTotal: netoEst + ivaCalc
                                                                     });
                                                                 }}
                                                             >
-                                                                Emitir Factura 📄
+                                                                Emitir Factura (API) 📄
                                                             </button>
                                                         ) : (
-                                                            <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: 'bold' }}>HES Pendiente Aprobación</span>
+                                                            <span style={{ fontSize: '11px', color: '#dc2626' }}>Requiere HES Aprobada</span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -762,26 +686,25 @@ export default function VistaContador({ modoNoche }) {
                         </div>
                     </div>
 
+                    {/* TABLA DE FACTURAS EMITIDAS */}
                     <div className="cnt-panel-box">
                         <h3 className="cnt-panel-title">Facturas Electrónicas Emitidas (DTE)</h3>
-                        <div className="cnt-table-wrap">
+                        <div className="cnt-table-wrap" style={{ marginTop: '12px' }}>
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
                                         <th>Folio DTE</th>
-                                        <th>HES vinculada</th>
-                                        <th>Fecha emisión</th>
-                                        <th className="right">Monto neto</th>
+                                        <th>HES Vinculada</th>
+                                        <th>Fecha Emisión</th>
+                                        <th className="right">Monto Neto</th>
                                         <th className="right">IVA (19%)</th>
                                         <th className="right">Total ($CLP)</th>
-                                        <th>Estado de pago</th>
+                                        <th>Estado</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {facturas.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="7" className="cnt-no-data">No se registran facturas electrónicas emitidas.</td>
-                                        </tr>
+                                        <tr><td colSpan="7" className="cnt-no-data">No se registran facturas electrónicas emitidas.</td></tr>
                                     ) : (
                                         facturas.map((f) => (
                                             <tr key={f.id_factura}>
@@ -802,24 +725,19 @@ export default function VistaContador({ modoNoche }) {
                 </div>
             )}
 
+            {/* PESTAÑA 3: CONTRATOS Y TARIFAS */}
             {pestaña === 'contratos' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-                    <div className="cnt-toolbar-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                        <div className="cnt-filter-row" style={{ flex: '1 1 260px' }}>
-                            <input
-                                type="text"
-                                className="cnt-search-input"
-                                placeholder="Filtrar por Cliente / Empresa, RUT o Nombre de Contrato..."
-                                value={busquedaContratoContador}
-                                onChange={(e) => setBusquedaContratoContador(e.target.value)}
-                            />
-                        </div>
-                        <button
-                            type="button"
-                            className="cnt-btn-action primary"
-                            onClick={() => setMostrarFormContrato(!mostrarFormContrato)}
-                        >
+                    <div className="cnt-toolbar-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <input
+                            type="text"
+                            className="cnt-search-input"
+                            placeholder="Filtrar contratos..."
+                            value={busquedaContratoContador}
+                            onChange={(e) => setBusquedaContratoContador(e.target.value)}
+                            style={{ maxWidth: '300px' }}
+                        />
+                        <button type="button" className="cnt-btn-action primary" onClick={() => setMostrarFormContrato(!mostrarFormContrato)}>
                             {mostrarFormContrato ? 'Cancelar' : '+ Nuevo contrato'}
                         </button>
                     </div>
@@ -828,8 +746,6 @@ export default function VistaContador({ modoNoche }) {
                         <div className="cnt-form-card">
                             <h3 className="cnt-form-title">Registrar Nuevo Contrato de Arriendo</h3>
                             <form onSubmit={handleCrearContrato} noValidate>
-
-                                {/* CAMPOS GENERALES DEL CONTRATO */}
                                 <div className="cnt-input-group full-width" style={{ marginBottom: '16px' }}>
                                     <label>Nombre / Sector del Contrato</label>
                                     <input
@@ -839,7 +755,6 @@ export default function VistaContador({ modoNoche }) {
                                         onChange={(e) => setFormContrato({ ...formContrato, nombre_contrato: e.target.value })}
                                     />
                                 </div>
-
                                 <div className="cnt-grid-inputs">
                                     <div className="cnt-input-group">
                                         <label>Cliente / Mandante *</label>
@@ -850,140 +765,61 @@ export default function VistaContador({ modoNoche }) {
                                             <option value="">Selecciona un cliente...</option>
                                             {clientes.map((c) => (
                                                 <option key={c.id_cliente || c.id} value={c.id_cliente || c.id}>
-                                                    {c.razon_social || c.nombre} {c.rut ? `(RUT: ${c.rut})` : ''}
+                                                    {c.razon_social || c.nombre}
                                                 </option>
                                             ))}
                                         </select>
-                                        {erroresFormContrato.id_cliente && (
-                                            <span className="cnt-error-msg">! {erroresFormContrato.id_cliente}</span>
-                                        )}
                                     </div>
-
                                     <div className="cnt-input-group">
                                         <label>Fecha Inicio</label>
                                         <input
                                             type="date"
-                                            min={fechaHoy}
                                             value={formContrato.fecha_inicio}
-                                            onChange={(e) => {
-                                                const nuevoInicio = e.target.value;
-                                                const finActual = formContrato.fecha_fin;
-                                                setFormContrato({
-                                                    ...formContrato,
-                                                    fecha_inicio: nuevoInicio,
-                                                    fecha_fin: finActual && nuevoInicio && finActual < nuevoInicio ? '' : finActual
-                                                });
-                                            }}
+                                            onChange={(e) => setFormContrato({ ...formContrato, fecha_inicio: e.target.value })}
                                         />
-                                        {erroresFormContrato.fecha_inicio && (
-                                            <span className="cnt-error-msg">! {erroresFormContrato.fecha_inicio}</span>
-                                        )}
                                     </div>
-
                                     <div className="cnt-input-group">
                                         <label>Fecha Fin (Pactada)</label>
                                         <input
                                             type="date"
-                                            min={formContrato.fecha_inicio || fechaHoy}
                                             value={formContrato.fecha_fin}
                                             onChange={(e) => setFormContrato({ ...formContrato, fecha_fin: e.target.value })}
                                         />
-                                        {erroresFormContrato.fecha_fin && (
-                                            <span className="cnt-error-msg">! {erroresFormContrato.fecha_fin}</span>
-                                        )}
                                     </div>
                                 </div>
 
-                                {/* MAQUINARIAS Y TARIFAS */}
-                                <div className="cnt-machines-container">
+                                <div className="cnt-machines-container" style={{ marginTop: '16px' }}>
                                     <div className="cnt-machines-header">
-                                        <label className="cnt-section-label">
-                                            Maquinarias Asignadas y Tarifas Individuales ($/Hora)
-                                        </label>
-                                        <button
-                                            type="button"
-                                            className="cnt-btn-action primary"
-                                            onClick={agregarFilaMaquina}
-                                        >
-                                            + Agregar máquina
-                                        </button>
+                                        <label className="cnt-section-label">Maquinarias Asignadas y Tarifas ($/Hora)</label>
+                                        <button type="button" className="cnt-btn-action primary" onClick={agregarFilaMaquina}>+ Agregar máquina</button>
                                     </div>
-
-                                    <div className="cnt-machines-section">
-                                        {formContrato.maquinas_asignadas.map((item, index) => {
-                                            const errorFila = erroresFormContrato.maquinas?.[index] || {};
-                                            return (
-                                                <React.Fragment key={index}>
-                                                    <div className="cnt-machine-row">
-                                                        <select
-                                                            value={item.id_maquina}
-                                                            onChange={(e) => handleCambioMaquinaFila(index, 'id_maquina', e.target.value)}
-                                                        >
-                                                            <option value="">Selecciona un equipo...</option>
-                                                            {maquinarias.map((m) => {
-                                                                const idM = m.id_maquina || m.id;
-                                                                const choque = buscarChoqueMaquina(
-                                                                    contratos, idM,
-                                                                    formContrato.fecha_inicio,
-                                                                    formContrato.fecha_fin || formContrato.fecha_inicio
-                                                                );
-                                                                const yaElegida = formContrato.maquinas_asignadas.some(
-                                                                    (f, i) => i !== index && String(f.id_maquina) === String(idM)
-                                                                );
-                                                                let aviso = '';
-                                                                if (choque) {
-                                                                    const hasta = choque.fecha_fin ? formatoFechaCL(choque.fecha_fin) : 'sin término';
-                                                                    aviso = ` — OCUPADA: ${nombreDeContrato(choque)} (hasta ${hasta})`;
-                                                                } else if (yaElegida) {
-                                                                    aviso = ' — ya elegida en este contrato';
-                                                                }
-                                                                return (
-                                                                    <option key={idM} value={idM} disabled={Boolean(choque) || yaElegida}>
-                                                                        {m.patente} - {m.tipo} ({m.marca || 'S/M'}){aviso}
-                                                                    </option>
-                                                                );
-                                                            })}
-                                                        </select>
-
-                                                        <input
-                                                            type="number"
-                                                            placeholder="Tarifa $/Hora (Ej: 32000)"
-                                                            value={item.tarifa_hora}
-                                                            onChange={(e) => handleCambioMaquinaFila(index, 'tarifa_hora', e.target.value)}
-                                                        />
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => eliminarFilaMaquina(index)}
-                                                            className="cnt-btn-delete-small"
-                                                            title="Eliminar fila"
-                                                        >
-                                                            ✕
-                                                        </button>
-                                                    </div>
-                                                    {(errorFila.id_maquina || errorFila.tarifa_hora) && (
-                                                        <span className="cnt-error-msg" style={{ marginTop: '-4px', marginBottom: '8px' }}>
-                                                            ! {errorFila.detalle || 'Selecciona el equipo e ingresar la tarifa.'}
-                                                        </span>
-                                                    )}
-                                                </React.Fragment>
-                                            );
-                                        })}
-                                    </div>
+                                    {formContrato.maquinas_asignadas.map((item, index) => (
+                                        <div className="cnt-machine-row" key={index} style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                            <select
+                                                value={item.id_maquina}
+                                                onChange={(e) => handleCambioMaquinaFila(index, 'id_maquina', e.target.value)}
+                                            >
+                                                <option value="">Selecciona equipo...</option>
+                                                {maquinarias.map((m) => (
+                                                    <option key={m.id_maquina || m.id} value={m.id_maquina || m.id}>
+                                                        {m.patente} - {m.tipo}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <input
+                                                type="number"
+                                                placeholder="Tarifa $/Hora"
+                                                value={item.tarifa_hora}
+                                                onChange={(e) => handleCambioMaquinaFila(index, 'tarifa_hora', e.target.value)}
+                                            />
+                                            <button type="button" onClick={() => eliminarFilaMaquina(index)} className="cnt-btn-delete-small">✕</button>
+                                        </div>
+                                    ))}
                                 </div>
 
-                                {/* 3. BOTONES DE ACCIÓN DEL FORMULARIO */}
-                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setMostrarFormContrato(false)}
-                                        className="cnt-btn-action dark"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button type="submit" className="cnt-btn-action primary">
-                                        Guardar contrato
-                                    </button>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                                    <button type="button" onClick={() => setMostrarFormContrato(false)} className="cnt-btn-action dark">Cancelar</button>
+                                    <button type="submit" className="cnt-btn-action primary">Guardar contrato</button>
                                 </div>
                             </form>
                         </div>
@@ -991,67 +827,38 @@ export default function VistaContador({ modoNoche }) {
 
                     <div className="cnt-panel-box">
                         <h3 className="cnt-panel-title">Contratos de Arriendo Registrados</h3>
-                        <div className="cnt-table-wrap">
+                        <div className="cnt-table-wrap" style={{ marginTop: '12px' }}>
                             <table className="cnt-table">
                                 <thead>
                                     <tr>
-                                        <th>ID / nombre del contrato</th>
-                                        <th>Cliente / mandante</th>
-                                        <th>Equipos y tarifas vinculadas</th>
+                                        <th>ID / Contrato</th>
+                                        <th>Cliente</th>
+                                        <th>Maquinarias y Tarifas</th>
                                         <th>Inicio</th>
-                                        <th>Término pactado</th>
+                                        <th>Término</th>
                                         <th>Estado</th>
-                                        <th className="right">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {contratosContadorFiltrados.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="7" className="cnt-no-data">No hay contratos registrados.</td>
-                                        </tr>
+                                        <tr><td colSpan="6" className="cnt-no-data">No hay contratos registrados.</td></tr>
                                     ) : (
                                         contratosContadorFiltrados.map((c) => {
                                             const maquinasList = obtenerMaquinasDeContrato(c);
-
                                             return (
                                                 <tr key={c.id_contrato}>
+                                                    <td className="bold">#{c.id_contrato} - {c.nombre_contrato || 'Sin nombre'}</td>
+                                                    <td>{c.cliente_nombre || c.razon_social || `Cliente #${c.id_cliente}`}</td>
                                                     <td>
-                                                        <div className="cnt-contrato-cell">
-                                                            {c.nombre_contrato ? (
-                                                                <>
-                                                                    <span className="cnt-nombre-texto">{c.nombre_contrato}</span>
-                                                                    <span className="cnt-id-code">#CTO-{c.id_contrato}</span>
-                                                                </>
-                                                            ) : (
-                                                                <strong className="cnt-nombre-texto">#CTO-{c.id_contrato}</strong>
-                                                            )}
-                                                        </div>
+                                                        {maquinasList.map((m, idx) => (
+                                                            <div key={idx} style={{ fontSize: '12px' }}>
+                                                                <strong className="mono">{m.patente}</strong> - <span style={{ color: '#16a34a', fontWeight: 'bold' }}>${parseInt(m.tarifa, 10).toLocaleString('es-CL')}/h</span>
+                                                            </div>
+                                                        ))}
                                                     </td>
-                                                    <td className="bold">{c.cliente_nombre || c.razon_social || `Cliente #${c.id_cliente}`}</td>
-                                                    <td>
-                                                        <div className="cnt-contrato-cell">
-                                                            {maquinasList.map((m, idx) => (
-                                                                <div key={idx} style={{ fontSize: '12px' }}>
-                                                                    <strong className="mono">{m.patente}</strong> ({m.tipo}) - <span style={{ color: '#16a34a', fontWeight: 'bold' }}>${parseInt(m.tarifa, 10).toLocaleString('es-CL')}/h</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                    <td className="mono">{c.fecha_inicio || 'S/F'}</td>
+                                                    <td className="mono">{c.fecha_inicio}</td>
                                                     <td className="mono">{c.fecha_fin || 'Indefinido'}</td>
-                                                    <td>
-                                                        <span className={`cnt-badge-hes ${c.estado_contrato === 'PRORROGADO' ? 'prorrogado' : 'aprobada'}`}>
-                                                            {c.estado_contrato || 'ACTIVO'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="right">
-                                                        <button
-                                                            className="cnt-btn-row-act prorrogar"
-                                                            onClick={() => setModalProrroga({ abierto: true, idContrato: c.id_contrato, nuevaFechaFin: c.fecha_fin || '' })}
-                                                        >
-                                                            Prorrogar
-                                                        </button>
-                                                    </td>
+                                                    <td><span className="cnt-badge-hes aprobada">{c.estado_contrato || 'ACTIVO'}</span></td>
                                                 </tr>
                                             );
                                         })
@@ -1063,21 +870,22 @@ export default function VistaContador({ modoNoche }) {
                 </div>
             )}
 
+            {/* PESTAÑA 4: CARPETA TRIBUTARIA (TEXTO LIBRE PARA EL NOMBRE) */}
             {pestaña === 'carpeta_tributaria' && (
                 <div className="cnt-panel-box">
-                    <h3 className="cnt-panel-title">Carpeta Tributaria y Laboral de la Empresa (F30, F30-1, Pólizas)</h3>
+                    <h3 className="cnt-panel-title">Carpeta Tributaria y Laboral de la Empresa</h3>
                     <p className="cnt-panel-sub">Repositorio digital para la acreditación laboral exigida en faenas e inspecciones.</p>
 
                     <form onSubmit={handleSubirDocEmpresa} noValidate className="cnt-form-card" style={{ marginTop: '16px' }}>
                         <div className="cnt-grid-inputs">
                             <div className="cnt-input-group">
-                                <label>Tipo de Documento Legal</label>
-                                <select value={tipoDocEmpresa} onChange={(e) => setTipoDocEmpresa(e.target.value)}>
-                                    <option value="F30">Certificado F30 (Antecedentes Laborales)</option>
-                                    <option value="F30-1">Certificado F30-1 (Cumplimiento de Obligaciones)</option>
-                                    <option value="Carpeta Tributaria">Carpeta Tributaria SII</option>
-                                    <option value="Poliza">Póliza de Seguro de Responsabilidad Civil</option>
-                                </select>
+                                <label>Nombre o Título del Documento *</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Certificado F30, Póliza de Seguro, etc."
+                                    value={nombreDocEmpresa}
+                                    onChange={(e) => setNombreDocEmpresa(e.target.value)}
+                                />
                             </div>
 
                             <div className="cnt-input-group">
@@ -1085,17 +893,15 @@ export default function VistaContador({ modoNoche }) {
                                 <input type="file" accept="application/pdf,image/*" onChange={(e) => setArchivoDocEmpresa(e.target.files[0])} />
                             </div>
 
-                            <button type="submit" className="cnt-btn-action primary">
-                                Subir documento
-                            </button>
+                            <button type="submit" className="cnt-btn-action primary">Subir documento</button>
                         </div>
                     </form>
 
-                    <div className="cnt-table-wrap">
+                    <div className="cnt-table-wrap" style={{ marginTop: '20px' }}>
                         <table className="cnt-table">
                             <thead>
                                 <tr>
-                                    <th>Documento</th>
+                                    <th>Nombre / Tipo de Documento</th>
                                     <th>Fecha de carga</th>
                                     <th>Estado</th>
                                     <th>Acciones</th>
@@ -1103,26 +909,21 @@ export default function VistaContador({ modoNoche }) {
                             </thead>
                             <tbody>
                                 {docsEmpresa.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="4" className="cnt-no-data">No se registran documentos en la carpeta tributaria.</td>
-                                    </tr>
+                                    <tr><td colSpan="4" className="cnt-no-data">No se registran documentos en la carpeta tributaria.</td></tr>
                                 ) : (
                                     docsEmpresa.map((doc, idx) => {
-                                        // Evaluamos de forma segura la propiedad de la URL
+                                        const nombreDocMostrado = doc.tipo_documento || doc.nombre || 'Documento Tributario';
                                         const urlDocumentoFinal = doc.url_archivo || doc.archivo;
 
                                         return (
                                             <tr key={doc.id_doc_empresa || idx}>
-                                                <td className="bold">{doc.tipo_documento}</td>
+                                                <td className="bold">{nombreDocMostrado}</td>
                                                 <td className="mono">{doc.fecha_carga || doc.fecha_emision}</td>
                                                 <td><span className="cnt-badge-hes aprobada">Vigente</span></td>
                                                 <td>
                                                     <button 
                                                         className="cnt-btn-s3" 
-                                                        onClick={() => abrirVisor({ 
-                                                            url: urlDocumentoFinal, 
-                                                            titulo: doc.tipo_documento 
-                                                        })}
+                                                        onClick={() => abrirVisor({ url: urlDocumentoFinal, titulo: nombreDocMostrado })}
                                                     >
                                                         Ver Documento
                                                     </button>
@@ -1137,22 +938,18 @@ export default function VistaContador({ modoNoche }) {
                 </div>
             )}
 
+            {/* PESTAÑA 5: EGRESOS / GASTOS */}
             {pestaña === 'gastos' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div className="cnt-filter-row">
+                    <div className="cnt-filter-row" style={{ display: 'flex', gap: '12px' }}>
                         <input
                             type="text"
                             className="cnt-search-input"
-                            placeholder="Buscar por descripción, comprobante, tipo o patente..."
+                            placeholder="Buscar por descripción o comprobante..."
                             value={busqueda}
                             onChange={(e) => setBusqueda(e.target.value)}
                         />
-
-                        <select
-                            className="cnt-select-filter"
-                            value={filtroTipo}
-                            onChange={(e) => setFiltroTipo(e.target.value)}
-                        >
+                        <select className="cnt-select-filter" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
                             <option value="todos">Todos los conceptos</option>
                             <option value="Combustible">Combustible</option>
                             <option value="Repuesto">Repuesto</option>
@@ -1177,47 +974,25 @@ export default function VistaContador({ modoNoche }) {
                                 </thead>
                                 <tbody>
                                     {gastosFiltrados.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="6" className="cnt-no-data">
-                                                No hay egresos registrados que coincidan con la búsqueda.
-                                            </td>
-                                        </tr>
+                                        <tr><td colSpan="6" className="cnt-no-data">No hay egresos registrados.</td></tr>
                                     ) : (
                                         gastosFiltrados.map((g) => {
-                                            const concepto = g.categoria_gasto || g.tipo_gasto || 'Gasto General';
-                                            const esCombustible = concepto.toLowerCase().includes('combus');
+                                            const concepto = g.categoria_gasto || 'Gasto General';
                                             const urlDoc = g.comprobante_url || g.url_comprobante || g.archivo_comprobante;
-
                                             return (
                                                 <tr key={g.id_gasto}>
                                                     <td className="mono">{g.fecha}</td>
-                                                    <td>
-                                                        <span className={`cnt-badge-concepto ${esCombustible ? 'combustible' : 'general'}`}>
-                                                            {concepto}
-                                                        </span>
-                                                    </td>
+                                                    <td><span className="cnt-badge-concepto general">{concepto}</span></td>
                                                     <td className="mono bold">{g.numero_comprobante || 'S/N'}</td>
                                                     <td>
                                                         {urlDoc ? (
-                                                            <button
-                                                                type="button"
-                                                                className="cnt-btn-s3"
-                                                                onClick={() => abrirVisor({
-                                                                    url: urlDoc,
-                                                                    titulo: `Comprobante ${concepto} - Folio ${g.numero_comprobante || 'S/N'}`,
-                                                                    subtitulo: `Monto: $${parseFloat(g.monto || 0).toLocaleString('es-CL')} • Fecha: ${g.fecha}`
-                                                                })}
-                                                            >
-                                                                <span></span> Ver documento
+                                                            <button type="button" className="cnt-btn-s3" onClick={() => abrirVisor({ url: urlDoc, titulo: `Comprobante ${concepto}` })}>
+                                                                Ver documento
                                                             </button>
-                                                        ) : (
-                                                            <span className="cnt-panel-sub">Sin archivo</span>
-                                                        )}
+                                                        ) : <span className="cnt-panel-sub">Sin archivo</span>}
                                                     </td>
                                                     <td className="bold mono">{obtenerPatente(g.id_maquina, g.id_maquina_detalle)}</td>
-                                                    <td className="monto-egreso right">
-                                                        ${parseFloat(g.monto || 0).toLocaleString('es-CL')}
-                                                    </td>
+                                                    <td className="monto-egreso right">${parseFloat(g.monto || 0).toLocaleString('es-CL')}</td>
                                                 </tr>
                                             );
                                         })
@@ -1229,95 +1004,54 @@ export default function VistaContador({ modoNoche }) {
                 </div>
             )}
 
-            {modalProrroga.abierto && (
-                <div className="cnt-modal-overlay" onClick={() => setModalProrroga({ abierto: false, idContrato: null, nuevaFechaFin: '' })}>
-                    <div className="cnt-modal-card" onClick={(e) => e.stopPropagation()}>
-                        <div className="cnt-modal-head">
-                            <h3 className="cnt-modal-title">Prorrogar contrato de arriendo</h3>
-                            <button className="cnt-btn-close" onClick={() => setModalProrroga({ abierto: false, idContrato: null, nuevaFechaFin: '' })}>✕</button>
-                        </div>
-                        <form onSubmit={handleProrrogarContrato} noValidate className="cnt-modal-body">
-                            <div className="cnt-input-group">
-                                <label>Nueva Fecha de Término (Anexo / Prórroga)</label>
-                                <input
-                                    type="date"
-                                    min={fechaMinProrroga()}
-                                    value={modalProrroga.nuevaFechaFin}
-                                    onChange={(e) => setModalProrroga({ ...modalProrroga, nuevaFechaFin: e.target.value })}
-                                />
-                            </div>
-
-                            <button type="submit" className="cnt-btn-action primary">
-                                Prorrogar
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
+            {/* MODAL REGISTRAR HES (CON ARCHIVO OBLIGATORIO PARA S3) */}
             {modalHes.abierto && (
-                <div className="cnt-modal-overlay" onClick={() => setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA' })}>
+                <div className="cnt-modal-overlay" onClick={() => setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA', archivoHES: null })}>
                     <div className="cnt-modal-card" onClick={(e) => e.stopPropagation()}>
                         <div className="cnt-modal-head">
                             <h3 className="cnt-modal-title">Registrar Hoja de Entrada de Servicio (HES)</h3>
-                            <button className="cnt-btn-close" onClick={() => setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA' })}>✕</button>
+                            <button className="cnt-btn-close" onClick={() => setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA', archivoHES: null })}>✕</button>
                         </div>
                         <form onSubmit={handleRegistrarHES} noValidate className="cnt-modal-body">
                             <div className="cnt-input-group">
                                 <label>Contrato Asociado</label>
-                                <select
-                                    value={modalHes.idContrato}
-                                    onChange={(e) => setModalHes({ ...modalHes, idContrato: e.target.value })}
-                                >
+                                <select value={modalHes.idContrato} onChange={(e) => setModalHes({ ...modalHes, idContrato: e.target.value })}>
                                     <option value="">Selecciona contrato...</option>
                                     {contratos.map(c => (
-                                        <option key={c.id_contrato} value={c.id_contrato}>
-                                            {nombreDeContrato(c)} - {c.cliente_nombre || 'Cliente'}
-                                        </option>
+                                        <option key={c.id_contrato} value={c.id_contrato}>{c.nombre_contrato || `Contrato #${c.id_contrato}`} - {c.cliente_nombre || 'Cliente'}</option>
                                     ))}
                                 </select>
                             </div>
-
                             <div className="cnt-input-group">
                                 <label>Número / Folio HES del Cliente</label>
-                                <input
-                                    type="text"
-                                    placeholder="Ej: 1001497389"
-                                    value={modalHes.numeroHes}
-                                    onChange={(e) => setModalHes({ ...modalHes, numeroHes: e.target.value })}
-                                />
+                                <input type="text" placeholder="Ej: 1001497389" value={modalHes.numeroHes} onChange={(e) => setModalHes({ ...modalHes, numeroHes: e.target.value })} />
                             </div>
-
                             <div className="cnt-input-group">
                                 <label>Horas Aprobadas por Mandante</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={modalHes.totalHoras}
-                                    onChange={(e) => setModalHes({ ...modalHes, totalHoras: e.target.value })}
-                                />
+                                <input type="number" step="0.1" value={modalHes.totalHoras} onChange={(e) => setModalHes({ ...modalHes, totalHoras: e.target.value })} />
                             </div>
-
                             <div className="cnt-input-group">
                                 <label>Estado de Validación</label>
-                                <select
-                                    value={modalHes.estado}
-                                    onChange={(e) => setModalHes({ ...modalHes, estado: e.target.value })}
-                                >
+                                <select value={modalHes.estado} onChange={(e) => setModalHes({ ...modalHes, estado: e.target.value })}>
                                     <option value="APROBADA">Aprobada (Habilita Facturación)</option>
                                     <option value="PENDIENTE">Pendiente (En Revisión)</option>
-                                    <option value="RECHAZADA">Rechazada</option>
                                 </select>
                             </div>
-
-                            <button type="submit" className="cnt-btn-action primary">
-                                Guardar HES
-                            </button>
+                            <div className="cnt-input-group">
+                                <label>Adjuntar Documento HES (Obligatorio - S3)</label>
+                                <input 
+                                    type="file" 
+                                    accept="application/pdf,image/*" 
+                                    onChange={(e) => setModalHes({ ...modalHes, archivoHES: e.target.files[0] })} 
+                                />
+                            </div>
+                            <button type="submit" className="cnt-btn-action primary">Guardar HES, Subir a S3 y Desactivar Turnos</button>
                         </form>
                     </div>
                 </div>
             )}
 
+            {/* MODAL EMITIR FACTURA */}
             {modalFactura.abierto && (
                 <div className="cnt-modal-overlay" onClick={() => setModalFactura({ abierto: false, idHes: '', folioDTE: '', montoNeto: '', iva: 0, montoTotal: 0 })}>
                     <div className="cnt-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -1327,30 +1061,9 @@ export default function VistaContador({ modoNoche }) {
                         </div>
                         <form onSubmit={handleEmitirFactura} noValidate className="cnt-modal-body">
                             <div className="cnt-input-group">
-                                <label>HES Aprobada para vincular</label>
-                                <select
-                                    value={modalFactura.idHes}
-                                    onChange={(e) => setModalFactura({ ...modalFactura, idHes: e.target.value })}
-                                >
-                                    <option value="">Selecciona HES autorizada...</option>
-                                    {hesList.map(h => (
-                                        <option key={h.id_hes} value={h.id_hes} disabled={h.estado !== 'APROBADA'}>
-                                            HES N° {h.numero_hes} - ({h.total_horas_aprobadas} hrs) [{h.estado}]
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="cnt-input-group">
                                 <label>Folio DTE Factura</label>
-                                <input
-                                    type="number"
-                                    placeholder="Ej: 208"
-                                    value={modalFactura.folioDTE}
-                                    onChange={(e) => setModalFactura({ ...modalFactura, folioDTE: e.target.value })}
-                                />
+                                <input type="number" placeholder="Ej: 208" value={modalFactura.folioDTE} onChange={(e) => setModalFactura({ ...modalFactura, folioDTE: e.target.value })} />
                             </div>
-
                             <div className="cnt-input-group">
                                 <label>Monto Neto ($CLP)</label>
                                 <input
@@ -1360,33 +1073,21 @@ export default function VistaContador({ modoNoche }) {
                                     onChange={(e) => handleCambioMontoNeto(e.target.value)}
                                 />
                             </div>
-
                             <div className="cnt-input-group">
-                                <label>IVA 19% (Automático)</label>
-                                <input
-                                    type="number"
-                                    value={modalFactura.iva}
-                                    readOnly
-                                />
+                                <label>IVA 19%</label>
+                                <input type="number" value={modalFactura.iva} readOnly />
                             </div>
-
                             <div className="cnt-input-group">
                                 <label>Monto Total ($CLP)</label>
-                                <input
-                                    type="number"
-                                    value={modalFactura.montoTotal}
-                                    readOnly
-                                />
+                                <input type="number" value={modalFactura.montoTotal} readOnly />
                             </div>
-
-                            <button type="submit" className="cnt-btn-action dark">
-                                Emitir Factura
-                            </button>
+                            <button type="submit" className="cnt-btn-action dark">Emitir Factura a API</button>
                         </form>
                     </div>
                 </div>
             )}
 
+            {/* VISOR DE DOCUMENTOS S3 */}
             {modalDoc.abierto && (
                 <div className="cnt-modal-overlay" onClick={() => setModalDoc({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false })}>
                     <div className="cnt-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -1396,20 +1097,15 @@ export default function VistaContador({ modoNoche }) {
                                 <p className="cnt-modal-sub">{modalDoc.subtitulo}</p>
                             </div>
                             <div className="cnt-modal-actions">
-                                <a href={modalDoc.url} target="_blank" rel="noopener noreferrer" className="cnt-btn-s3">
-                                    Abrir en Pestaña Nueva ↗
-                                </a>
-                                <button onClick={() => setModalDoc({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false })} className="cnt-btn-close">
-                                    ✕
-                                </button>
+                                <a href={modalDoc.url} target="_blank" rel="noopener noreferrer" className="cnt-btn-s3">Abrir en Pestaña Nueva ↗</a>
+                                <button onClick={() => setModalDoc({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false })} className="cnt-btn-close">✕</button>
                             </div>
                         </div>
-
                         <div className="cnt-modal-body">
                             {modalDoc.esPdf ? (
-                                <iframe src={modalDoc.url} title={modalDoc.titulo} className="cnt-viewer-iframe" />
+                                <iframe src={modalDoc.url} title={modalDoc.titulo} className="cnt-viewer-iframe" style={{ width: '100%', height: '500px', border: 'none' }} />
                             ) : (
-                                <img src={modalDoc.url} alt={modalDoc.titulo} className="cnt-viewer-img" />
+                                <img src={modalDoc.url} alt={modalDoc.titulo} className="cnt-viewer-img" style={{ maxWidth: '100%', maxHeight: '500px' }} />
                             )}
                         </div>
                     </div>
