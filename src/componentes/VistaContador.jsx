@@ -111,7 +111,7 @@ export default function VistaContador({ modoNoche }) {
     const [erroresFormContrato, setErroresFormContrato] = useState({});
 
     // Modales de Trabajo y Formulario Factura / HES (incluyendo archivoHES)
-    const [modalHes, setModalHes] = useState({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA', archivoHES: null });
+    const [modalHes, setModalHes] = useState({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'Por Aprobar', archivoHES: null });
     const [modalFactura, setModalFactura] = useState({ abierto: false, idHes: '', folioDTE: '', montoNeto: '', iva: 0, montoTotal: 0 });
     const [modalProrroga, setModalProrroga] = useState({ abierto: false, idContrato: null, nuevaFechaFin: '' });
     const [modalDoc, setModalDoc] = useState({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false });
@@ -300,6 +300,16 @@ export default function VistaContador({ modoNoche }) {
             mostrarNotificacion('No se pudo registrar la HES o subir el archivo a S3.', 'error');
         }
     };
+    
+    const handleCambiarEstadoHES = async (idHes, nuevoEstado) => {
+    try {
+        await axios.patch(`/hes/${idHes}/`, { estado: nuevoEstado });
+        mostrarNotificacion(`Estado de la HES actualizado a [${nuevoEstado}].`);
+        cargarDatosFinancieros();
+    } catch (err) {
+        mostrarNotificacion(extraerErrorApi(err, 'No se pudo actualizar el estado de la HES.'), 'error');
+    }
+};
 
     const handleCambioMontoNeto = (valorNeto) => {
         const neto = parseInt(valorNeto, 10) || 0;
@@ -313,6 +323,7 @@ export default function VistaContador({ modoNoche }) {
             montoTotal: totalCalculado
         }));
     };
+    
 
     const handleEmitirFactura = async (e) => {
         e.preventDefault();
@@ -520,7 +531,7 @@ export default function VistaContador({ modoNoche }) {
                 </button>
             </div>
 
-            {/* PESTAÑA 1: FACTURACIÓN HES (SOLO CONCILIACIÓN Y ESTADO, SIN EMITIR FACTURA AQUÍ) */}
+
             {pestaña === 'Gestion HES' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="cnt-panel-box">
@@ -540,6 +551,7 @@ export default function VistaContador({ modoNoche }) {
                                         <th>Turnos</th>
                                         <th className="right">Horas ejecutadas</th>
                                         <th className="right">Total estimado</th>
+                                        <th>N° HES</th>
                                         <th>Estado HES</th>
                                         <th className="right">Acciones</th>
                                     </tr>
@@ -565,10 +577,34 @@ export default function VistaContador({ modoNoche }) {
                                                     <td className="monto-ingreso right">${parseInt(item.subtotal, 10).toLocaleString('es-CL')}</td>
                                                     <td>
                                                         {hesExistente ? (
-                                                            <span className={`cnt-badge-hes ${hesExistente.estado === 'APROBADA' ? 'aprobada' : 'pendiente'}`}>
-                                                                HES N° {hesExistente.numero_hes} ({hesExistente.estado})
-                                                            </span>
+                                                            <span className="bold mono">N° {hesExistente.numero_hes}</span>
                                                         ) : (
+                                                            <span className="cnt-panel-sub">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {hesExistente ? (() => {
+                                                            const estadoActual = (hesExistente.estado || 'PENDIENTE').toUpperCase();
+                                                            const claseEstado =
+                                                                estadoActual === 'APROBADA'
+                                                                    ? 'aprobada'
+                                                                    : estadoActual === 'RECHAZADA'
+                                                                    ? 'rechazada'
+                                                                    : 'pendiente';
+
+                                                            return (
+                                                                <div className={`cnt-select-pill ${claseEstado}`}>
+                                                                    <select
+                                                                        value={estadoActual}
+                                                                        onChange={(e) => handleCambiarEstadoHES(hesExistente.id_hes, e.target.value)}
+                                                                    >
+                                                                        <option value="PENDIENTE">POR APROBAR</option>
+                                                                        <option value="APROBADA">APROBADA</option>
+                                                                        <option value="RECHAZADA">RECHAZADA</option>
+                                                                    </select>
+                                                                </div>
+                                                            );
+                                                        })() : (
                                                             <span className="cnt-badge-hes pendiente">HES Pendiente</span>
                                                         )}
                                                     </td>
@@ -595,7 +631,7 @@ export default function VistaContador({ modoNoche }) {
                 </div>
             )}
 
-            {/* PESTAÑA 2: GESTIÓN HES & FACTURAS (AQUÍ SÍ ESTÁ EL BOTÓN DE EMITIR FACTURA Y ADJUNTO S3) */}
+ 
             {pestaña === 'Facturacion' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="cnt-panel-box">

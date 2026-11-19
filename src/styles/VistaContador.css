@@ -604,6 +604,12 @@ button.cnt-btn-delete-small:hover,
     border: 1px solid #bae6fd !important;
 }
 
+.cnt-badge-hes.rechazada {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
 .cnt-badge-concepto.combustible {
     background-color: #fef3c7 !important;
     color: #92400e !important;
@@ -875,4 +881,69 @@ body.dark-mode .cnt-nombre-texto,
     font-size: 11px !important;
     font-weight: 700 !important;
     display: block !important;
+}
+.cnt-select-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: 1px solid transparent;
+}
+
+.cnt-select-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+}
+
+.cnt-select-pill.pendiente {
+    background-color: #fffbeb;
+    color: #b45309;
+    border-color: #fde68a;
+}
+
+.cnt-select-pill.aprobada {
+    background-color: #ecfdf5;
+    color: #047857;
+    border-color: #a7f3d0;
+}
+
+.cnt-select-pill.rechazada {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+
+html body .cnt-select-pill select,
+html body .cnt-select-pill select:focus,
+html body .cnt-select-pill select:hover {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: 0 !important;
+    border-width: 0 !important;
+    border-style: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    color: inherit !important;
+    font: inherit !important;
+    font-weight: inherit !important;
+    text-transform: inherit !important;
+    letter-spacing: inherit !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.cnt-select-pill select option {
+    background-color: #ffffff;
+    color: #0f172a;
 }
