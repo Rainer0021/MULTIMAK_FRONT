@@ -219,6 +219,21 @@ const irAlFormulario = (idElemento) => {
     }, 80);
 };
 
+// Valida el formulario de "Registrar mantención" y avisa si el horómetro no alcanzará a cerrar la alerta.
+const validarMantencion = (form, m, fechaHoy) => {
+    const horo = parseInt(form.horometro_mantencion, 10);
+    const desc = String(form.descripcion_mantenimiento || '').trim();
+    if (!form.fecha_mantencion) return { error: 'Ingresa la fecha de la mantención.' };
+    if (form.fecha_mantencion > fechaHoy) return { error: 'La fecha de la mantención no puede ser futura.' };
+    if (!Number.isFinite(horo) || horo <= 0) return { error: 'Ingresa el horómetro al que se hizo la mantención.' };
+    if (horo > Math.ceil(m.horometroNum)) return { error: `El horómetro no puede ser mayor al actual de la máquina (${m.horometroNum} hrs).` };
+    if (!desc) return { error: 'Describe brevemente la mantención realizada.' };
+    if (desc.length > 255) return { error: 'La descripción no puede superar los 255 caracteres.' };
+    const minimo = m.pautaMostrada - 50;
+    const conPauta = m.nivelAlerta === 'PRÓXIMA_MANTENCIÓN' || m.pautaVencida;
+    return { error: '', horo, desc, minimo, advertir: conPauta && horo < minimo };
+};
+
 export default function VistaAdmin({ usuario, modoNoche }) {
     const fechaHoy = hoyLocalISO();
 
@@ -245,6 +260,14 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const [cargando, setCargando] = useState(true);
     const [error, setError] = useState('');
     const [mensajeExito, setMensajeExito] = useState('');
+
+    // Registro de mantenciones realizadas (cierra las alertas de mantención)
+    const [mantenimientos, setMantenimientos] = useState([]);
+    const [verHistorialMant, setVerHistorialMant] = useState(false);
+    const [modalMant, setModalMant] = useState({ abierto: false, maquina: null });
+    const [formMant, setFormMant] = useState({ fecha_mantencion: '', tipo_mantencion: 'Preventiva (500 hrs)', horometro_mantencion: '', descripcion_mantenimiento: '' });
+    const [errorMant, setErrorMant] = useState('');
+    const [guardandoMant, setGuardandoMant] = useState(false);
 
     const [modalEliminar, setModalEliminar] = useState({
         abierto: false,
@@ -425,7 +448,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         setCargando(true);
         setError('');
         try {
-            const [resCli, resMaq, resOp, resRep, resGas, resCont, resDocs, resKpis] = await Promise.all([
+            const [resCli, resMaq, resOp, resRep, resGas, resCont, resDocs, resMant, resKpis] = await Promise.all([
                 axios.get('clientes/').catch(() => axios.get('/clientes/')).catch(() => ({ data: [] })),
                 axios.get('maquinarias/').catch(() => axios.get('/maquinarias/')).catch(() => ({ data: [] })),
                 axios.get('operadores/').catch(() => axios.get('/operadores/')).catch(() => ({ data: [] })),
@@ -433,11 +456,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 axios.get('gastos/').catch(() => axios.get('/gastos/')).catch(() => ({ data: [] })),
                 axios.get('/contratos/').catch(() => axios.get('contratos/')).catch(() => ({ data: [] })),
                 axios.get('doc-maquinaria/').catch(() => axios.get('/doc-maquinaria/')).catch(() => ({ data: [] })),
+                axios.get('mantenimientos/').catch(() => axios.get('/mantenimientos/')).catch(() => ({ data: [] })),
                 axios.get('resumen-kpis/').catch(() => axios.get('/resumen-kpis/')).catch(() => ({ data: {} })) 
             ]);
 
 
             setDocumentosMaq(resDocs.data?.results || (Array.isArray(resDocs.data) ? resDocs.data : []));
+            setMantenimientos(resMant.data?.results || (Array.isArray(resMant.data) ? resMant.data : []));
             setClientes(resCli.data?.results || (Array.isArray(resCli.data) ? resCli.data : []));
             setMaquinarias(resMaq.data?.results || (Array.isArray(resMaq.data) ? resMaq.data : []));
             setOperadores(resOp.data?.results || (Array.isArray(resOp.data) ? resOp.data : []));
@@ -461,31 +486,57 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         setFechaProyeccion(calcularFechaFutura(dNum));
     };
 
+    // ALERTAS DE MANTENCIÓN
+    const ultimaMantencionPorMaquina = {};
+    mantenimientos.filter((x) => x.activo !== false).forEach((x) => {
+        const id = String(x.id_maquina?.id_maquina ?? x.id_maquina);
+        ultimaMantencionPorMaquina[id] = Math.max(ultimaMantencionPorMaquina[id] || 0, parseFloat(x.horometro_mantencion) || 0);
+    });
+
     const analisisMantenciones = maquinarias.map((m) => {
         const h = parseFloat(m.horometro_actual ?? m.horometro ?? 0);
         const proximaPauta = h === 0 ? 500 : Math.ceil(h / 500) * 500;
         const horasRestantes = proximaPauta - h;
+        const pautaPasada = Math.floor(h / 500) * 500; // misma regla que usa el servidor
+        const estadoNorm = estadoMaquinaNorm(m.estado);
+        // La mantención de esta pauta ya se hizo si se registró una desde 50 hrs antes (igual que el servidor)
+        const yaHecha = (ultimaMantencionPorMaquina[String(m.id_maquina)] || 0) >= proximaPauta - 50;
 
         let nivelAlerta = 'OPERATIVA';
+        let pautaVencida = false;
         let detalleAlerta = 'Operación normal';
+        let pautaMostrada = proximaPauta;
+        let horasPasadas = 0;
 
-        if (horasRestantes <= 50 && horasRestantes > 0) {
-            nivelAlerta = 'PRÓXIMA_MANTENCIÓN';
-            detalleAlerta = `Faltan ${horasRestantes.toFixed(1)} hrs para mantención de ${proximaPauta} hrs`;
-        } else if (horasRestantes <= 0) {
-            nivelAlerta = 'MANTENCIÓN_PENDIENTE';
-            detalleAlerta = `Alcanzó pauta de ${proximaPauta} hrs. Ingreso requerido a taller`;
-        }
-
-        if (maquinaEnTallerOMantencion(m.estado)) {
+        if (estadoNorm.includes('TALLER')) {
             nivelAlerta = 'MANTENCIÓN_PENDIENTE';
             detalleAlerta = 'Equipo en taller o fuera de servicio';
+        } else if (estadoNorm.includes('REQUIERE')) {
+            nivelAlerta = 'MANTENCIÓN_PENDIENTE';
+            if (pautaPasada > 0) {
+                pautaMostrada = pautaPasada;
+                pautaVencida = true;
+                horasPasadas = h - pautaPasada;
+                detalleAlerta = `Pasó las ${pautaPasada} hrs sin mantención registrada`;
+            } else {
+                detalleAlerta = 'Marcada como "Requiere mantención"';
+            }
+        } else if (horasRestantes <= 0 && !yaHecha) {
+            nivelAlerta = 'MANTENCIÓN_PENDIENTE';
+            pautaVencida = true;
+            detalleAlerta = `Llegó a las ${proximaPauta} hrs: toca mantención`;
+        } else if (horasRestantes > 0 && horasRestantes <= 50 && !yaHecha) {
+            nivelAlerta = 'PRÓXIMA_MANTENCIÓN';
+            detalleAlerta = `Faltan ${horasRestantes.toFixed(1)} hrs para la mantención de ${proximaPauta} hrs`;
         }
 
         return {
             ...m,
             horometroNum: h,
             proximaPauta,
+            pautaMostrada,
+            pautaVencida,
+            horasPasadas,
             horasRestantes: Math.max(0, horasRestantes).toFixed(1),
             porcentajeUso: Math.min(100, Math.round((h / proximaPauta) * 100)),
             nivelAlerta,
@@ -494,6 +545,67 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     });
 
     const maquinasConAlerta = analisisMantenciones.filter(m => m.nivelAlerta !== 'OPERATIVA');
+    const alertasProximas = maquinasConAlerta.filter(m => m.nivelAlerta === 'PRÓXIMA_MANTENCIÓN').length;
+    const alertasPendientes = maquinasConAlerta.length - alertasProximas;
+    const formatoHoras = (n) => Number(n).toLocaleString('es-CL');
+    const textoPauta = (m) => `Mantención de ${formatoHoras(m.pautaMostrada)} hrs${m.pautaMostrada % 1000 === 0 ? ' (mayor)' : ''}`;
+    const abrirModalMantencion = (m) => {
+        const taller = String(m.estado || '').toUpperCase().includes('TALLER');
+        setFormMant({
+            fecha_mantencion: fechaHoy,
+            tipo_mantencion: taller ? 'Correctiva' : (m.pautaMostrada % 1000 === 0 ? 'Mayor (1.000 hrs)' : 'Preventiva (500 hrs)'),
+            horometro_mantencion: String(Math.floor(m.horometroNum)),
+            descripcion_mantenimiento: ''
+        });
+        setErrorMant('');
+        setModalMant({ abierto: true, maquina: m });
+    };
+
+    const cerrarModalMantencion = () => {
+        if (guardandoMant) return;
+        setModalMant({ abierto: false, maquina: null });
+    };
+
+    const guardarMantencion = async (e) => {
+        e.preventDefault();
+        const m = modalMant.maquina;
+        if (guardandoMant || !m) return;
+        const v = validarMantencion(formMant, m, fechaHoy);
+        if (v.error) {
+            setErrorMant(v.error);
+            return;
+        }
+        setErrorMant('');
+        setGuardandoMant(true);
+        try {
+            await axios.post('mantenimientos/', {
+                id_maquina: m.id_maquina,
+                fecha_mantencion: formMant.fecha_mantencion,
+                tipo_mantencion: formMant.tipo_mantencion,
+                horometro_mantencion: v.horo,
+                estado: 'COMPLETADA',
+                descripcion_mantenimiento: v.desc
+            });
+            setModalMant({ abierto: false, maquina: null });
+            setMensajeExito(
+                `Mantención registrada para ${m.patente}. La máquina vuelve a "Operativa".` +
+                (v.advertir ? ` Ojo: con ese horómetro la alerta de la mantención de ${formatoHoras(m.pautaMostrada)} hrs puede volver a aparecer (debe ser ${formatoHoras(v.minimo)} hrs o más).` : '')
+            );
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            await cargarTodo();
+        } catch (err) {
+            setErrorMant(extraerErroresApi(err, 'No se pudo registrar la mantención. Intenta nuevamente.').general);
+        } finally {
+            setGuardandoMant(false);
+        }
+    };
+
+    const textoHorasRestantes = (m) => {
+        if (m.horasPasadas > 0) return `Pasada por ${m.horasPasadas.toFixed(1)} hrs`;
+        if (parseFloat(m.horasRestantes) <= 0) return 'Llegó a la hora';
+        if (m.nivelAlerta === 'MANTENCIÓN_PENDIENTE') return '—';
+        return `Faltan ${m.horasRestantes} hrs`;
+    };
 
     const estadoFlotaProyectada = maquinarias.map((m) => {
         const idMaqStr = String(m.id_maquina !== undefined ? m.id_maquina : m.id);
@@ -1529,11 +1641,11 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                             className={`adm-kpi-card ${maquinasConAlerta.length > 0 ? 'alert-card' : ''}`}
                             onClick={() => document.getElementById('seccion-mantenciones')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                             style={{ cursor: 'pointer' }}
-                            title="Ir a la tabla de mantenciones"
+                            title="Se hace mantención cada 500 hrs (la de 1.000 hrs es la mayor). Se avisa desde 50 hrs antes: 450, 950, 1.450... Clic para ver el detalle."
                         >
                             <span className="adm-kpi-sub">Alertas de mantención</span>
                             <div className="adm-kpi-value">{maquinasConAlerta.length}</div>
-                            <span className="adm-kpi-foot">Equipos cerca de su pauta de 500 h o en taller</span>
+                            <span className="adm-kpi-foot">{alertasProximas} próximas · {alertasPendientes} pendientes o en taller</span>
                         </div>
 
                         <div className="adm-kpi-card" onClick={() => setTabActiva('gastos')} style={{ cursor: 'pointer' }} title="Ver detalle de gastos">
@@ -1864,14 +1976,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                         <div className="adm-card-head">
                             <div>
                                 <h3 className="adm-card-title">Mantenciones pendientes y próximas</h3>
-                                <p className="adm-card-sub">Solo equipos que requieren mantención o están cerca de su pauta (500h / 1.000h).</p>
                             </div>
-                            <span className="adm-nav-badge">{maquinasConAlerta.length} de {maquinarias.length} máquinas</span>
+                            <span className="adm-nav-badge">{maquinasConAlerta.length} con alerta (de {maquinarias.length} en total)</span>
                         </div>
 
                         {maquinasConAlerta.length === 0 ? (
                             <p className="adm-card-sub" style={{ padding: '8px 16px 16px' }}>
-                                Ningún equipo requiere mantención ni está cerca de su pauta.
+                                Ninguna máquina está a 50 hrs o menos de su mantención ni tiene una pendiente.
                             </p>
                         ) : (
                             <div className="adm-table-wrap">
@@ -1879,10 +1990,11 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     <thead>
                                         <tr>
                                             <th>Máquina</th>
-                                            <th>Horómetro Acumulado</th>
-                                            <th>Próxima Pauta</th>
-                                            <th>Horas Restantes</th>
-                                            <th style={{ textAlign: 'center' }}>Condición Técnica</th>
+                                            <th>Horómetro Actual</th>
+                                            <th>Próxima pauta</th>
+                                            <th>Estado de horas</th>
+                                            <th style={{ textAlign: 'center' }}>Motivo de alertas</th>
+                                            <th style={{ textAlign: 'center' }}>Acción</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1906,17 +2018,30 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                         {m.horometroNum.toFixed(1)} hrs
                                                     </td>
                                                     <td style={{ fontWeight: '700' }}>
-                                                        Pauta de {m.proximaPauta} hrs
+                                                        {textoPauta(m)}
                                                     </td>
-                                                    <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '800', color: m.horasRestantes <= 50 ? '#dc2626' : '#16a34a' }}>
-                                                        Faltan {m.horasRestantes} hrs
+                                                    <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '800', color: m.nivelAlerta === 'MANTENCIÓN_PENDIENTE' ? '#dc2626' : '#d97706' }}>
+                                                        {textoHorasRestantes(m)}
                                                     </td>
                                                     <td style={{ textAlign: 'center' }}>
                                                         {m.nivelAlerta === 'MANTENCIÓN_PENDIENTE' ? (
-                                                            <span className="adm-badge-red">Mantención pendiente</span>
+                                                            <span className="adm-badge-red">En taller / Pauta vencida</span>
                                                         ) : (
-                                                            <span className="adm-badge-amber">Próxima mantención</span>
+                                                            <span className="adm-badge-amber">Aviso preventivo</span>
                                                         )}
+                                                        <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--muted, #667085)', fontWeight: '500' }}>
+                                                            {m.detalleAlerta}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            type="button"
+                                                            className="adm-btn-secondary"
+                                                            style={{ padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap' }}
+                                                            onClick={() => abrirModalMantencion(m)}
+                                                        >
+                                                            Registrar mantención
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -1925,7 +2050,62 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                             </div>
                         )}
 
-                        <div style={{ textAlign: 'center', padding: '12px 16px 16px' }}>
+                        {verHistorialMant && mantenimientos.length > 0 && (
+                            <div style={{ width: '100%', padding: '16px 20px 8px', borderTop: '1px solid #e2e8f0', boxSizing: 'border-box' }}>
+                                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: '800', color: 'var(--ink)' }}>
+                                    Historial de mantenciones realizadas
+                                </h4>
+                                <div className="adm-table-wrap" style={{ width: '100%' }}>
+                                    <table className="adm-table" style={{ width: '100%' }}>
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Máquina</th>
+                                                <th>Tipo</th>
+                                                <th>Horómetro</th>
+                                                <th>Descripción / Trabajo realizado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {[...mantenimientos]
+                                                .sort((a, b) => String(b.fecha_mantencion || '').localeCompare(String(a.fecha_mantencion || '')))
+                                                .map((mant, idx) => {
+                                                    const idM = mant.id_maquina?.id_maquina ?? mant.id_maquina;
+                                                    const maqObj = maquinarias.find(x => String(x.id_maquina) === String(idM));
+                                                    return (
+                                                        <tr key={mant.id_mantenimiento || mant.id || idx}>
+                                                            <td style={{ whiteSpace: 'nowrap', fontFamily: 'Consolas, monospace' }}>
+                                                                {formatoFechaCL(mant.fecha_mantencion)}
+                                                            </td>
+                                                            <td>
+                                                                <span className="adm-fleet-badge">
+                                                                    {maqObj ? maqObj.patente : `ID #${idM}`}
+                                                                </span>
+                                                            </td>
+                                                            <td><span className="adm-tag">{mant.tipo_mantencion}</span></td>
+                                                            <td style={{ fontFamily: 'Consolas, monospace', fontWeight: '700' }}>
+                                                                {formatoHoras(mant.horometro_mantencion)} hrs
+                                                            </td>
+                                                            <td>{mant.descripcion_mantenimiento}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', padding: '12px 16px 16px' }}>
+                            {mantenimientos.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setVerHistorialMant(!verHistorialMant)}
+                                    style={{ background: 'none', border: 'none', color: '#475569', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
+                                >
+                                    {verHistorialMant ? '▲ Ocultar historial' : `▼ Ver historial (${mantenimientos.length})`}
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => setTabActiva('maquinarias')}
@@ -2484,14 +2664,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         )}
                                     </div>
                                     <div className="adm-field">
-                                        <label>Estado Operativo</label>
+                                        <label>Estado Técnico</label>
                                         <select
                                             value={formMaq.estado}
                                             onChange={e => setFormMaq({ ...formMaq, estado: e.target.value })}
                                         >
-                                            <option value="OPERATIVA">Operativa (disponible)</option>
-                                            <option value="EN FAENA">En faena</option>
-                                            <option value="EN TALLER">En taller</option>
+                                            <option value="OPERATIVA">Operativa (lista para trabajar)</option>
+                                            <option value="EN TALLER">En taller (en reparación)</option>
                                             <option value="REQUIERE MANTENCIÓN">Requiere mantención</option>
                                         </select>
                                     </div>
@@ -2540,6 +2719,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                         <th>Patente</th>
                                         <th>Marca y Modelo</th>
                                         <th>Horómetro</th>
+                                        <th>Estado Técnico</th>
                                         <th>Estado SOAP</th>
                                         <th>Estado Rev. Técnica</th>
                                         <th>Estado del permiso</th>
@@ -2568,6 +2748,11 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                 <td>{m.marca} {m.modelo} <span className="adm-tag" style={{ marginLeft: '4px' }}>{m.tipo}</span></td>
                                                 <td style={{ fontWeight: '800', fontFamily: 'Consolas, monospace' }}>
                                                     {(m.horometro_actual ?? m.horometro ?? 0)} hrs
+                                                </td>
+                                                <td>
+                                                    <span className={maquinaEnTallerOMantencion(m.estado) ? 'adm-badge-red' : 'adm-badge-green'}>
+                                                        {nombreEstadoMaquina(m.estado)}
+                                                    </span>
                                                 </td>
                                                 <td><span className={stSoap.clase} title={stSoap.detalle}>{stSoap.texto}</span></td>
                                                 <td><span className={stRev.clase} title={stRev.detalle}>{stRev.texto}</span></td>
@@ -3402,6 +3587,95 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                     </div>
                 </div>
             )}
+
+            {modalMant.abierto && modalMant.maquina && (() => {
+                const m = modalMant.maquina;
+                const horoLive = parseInt(formMant.horometro_mantencion, 10);
+                const minimo = m.pautaMostrada - 50;
+                const avisarHoro = (m.nivelAlerta === 'PRÓXIMA_MANTENCIÓN' || m.pautaVencida) && Number.isFinite(horoLive) && horoLive < minimo;
+                return (
+                    <div className="adm-modal-overlay" onClick={cerrarModalMantencion}>
+                        <div className="adm-modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+                            <div className="adm-modal-header">
+                                <div className="adm-modal-title-group">
+                                    <h3>Registrar mantención</h3>
+                                    <p>{m.patente} · {`${m.tipo || ''} ${m.marca || ''}`.trim()} · {formatoHoras(m.horometroNum)} hrs</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={cerrarModalMantencion}
+                                    style={{ background: 'none', border: 'none', fontSize: '18px', fontWeight: '800', cursor: 'pointer', color: modoNoche ? '#cbd5e1' : '#64748b' }}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <form onSubmit={guardarMantencion} noValidate>
+                                <div className="adm-modal-body" style={{ padding: '20px 24px', display: 'block' }}>
+                                    <div className="adm-crud-form" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                        <div className="adm-field">
+                                            <label>Fecha de la mantención *</label>
+                                            <input
+                                                type="date"
+                                                max={fechaHoy}
+                                                value={formMant.fecha_mantencion}
+                                                onChange={e => setFormMant({ ...formMant, fecha_mantencion: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="adm-field">
+                                            <label>Tipo de mantención *</label>
+                                            <select
+                                                value={formMant.tipo_mantencion}
+                                                onChange={e => setFormMant({ ...formMant, tipo_mantencion: e.target.value })}
+                                            >
+                                                <option value="Preventiva (500 hrs)">Preventiva (500 hrs)</option>
+                                                <option value="Mayor (1.000 hrs)">Mayor (1.000 hrs)</option>
+                                                <option value="Correctiva">Correctiva</option>
+                                            </select>
+                                        </div>
+                                        <div className="adm-field">
+                                            <label>Horómetro al hacer la mantención (hrs) *</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                value={formMant.horometro_mantencion}
+                                                onChange={e => setFormMant({ ...formMant, horometro_mantencion: e.target.value })}
+                                            />
+                                            {avisarHoro && (
+                                                <span style={{ color: '#b45309', fontSize: '11px', fontWeight: '700', marginTop: '4px', display: 'block' }}>
+                                                    Con este horómetro la alerta de la mantención de {formatoHoras(m.pautaMostrada)} hrs no se cerrará del todo: debe ser {formatoHoras(minimo)} hrs o más.
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="adm-field">
+                                            <label>Descripción *</label>
+                                            <input
+                                                type="text"
+                                                maxLength={255}
+                                                placeholder="Ej: Cambio de aceite y filtros"
+                                                value={formMant.descripcion_mantenimiento}
+                                                onChange={e => setFormMant({ ...formMant, descripcion_mantenimiento: e.target.value })}
+                                            />
+                                        </div>
+                                        <p style={{ margin: 0, fontSize: '12px', color: modoNoche ? '#94a3b8' : '#64748b' }}>
+                                            Al guardar, la máquina vuelve a "Operativa" y se cierra la alerta de mantención.
+                                        </p>
+                                        {errorMant && <div className="adm-alert-fail">{errorMant}</div>}
+                                    </div>
+                                </div>
+                                <div className="adm-modal-footer" style={{ justifyContent: 'flex-end', gap: '12px' }}>
+                                    <button type="button" className="adm-btn-secondary" onClick={cerrarModalMantencion} disabled={guardandoMant}>
+                                        Cancelar
+                                    </button>
+                                    <button type="submit" className="adm-btn-submit" disabled={guardandoMant}>
+                                        {guardandoMant ? 'Guardando...' : 'Guardar mantención'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {modalEliminar.abierto && (
                 <div className="adm-modal-overlay" onClick={cerrarModalEliminar}>
