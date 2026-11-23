@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from '../api/axios'; 
+import axios from '../api/axios';
 import '../styles/VistaContador.css';
 import { subirArchivoAS3, obtenerUrlLecturaS3 } from '../utils/s3Uploader';
 
@@ -75,7 +75,7 @@ const extraerErrorApi = (err, defecto) => {
 };
 
 
-export default function VistaContador({ modoNoche }) {
+export default function VistaContador({ usuario, modoNoche }) {
     const fechaHoy = hoyLocalISO();
 
     const [gastos, setGastos] = useState([]);
@@ -217,7 +217,7 @@ export default function VistaContador({ modoNoche }) {
             const idNuevoContrato = resContrato.data?.id_contrato || resContrato.data?.id;
 
             if (idNuevoContrato) {
-                const promesas = formContrato.maquinas_asignadas.map(m => 
+                const promesas = formContrato.maquinas_asignadas.map(m =>
                     axios.post('contrato-maquinarias/', {
                         id_contrato: idNuevoContrato,
                         id_maquina: parseInt(m.id_maquina, 10),
@@ -287,7 +287,7 @@ export default function VistaContador({ modoNoche }) {
             // 2. Desactivar automáticamente los reportes contabilizados de este contrato
             const reportesAfectados = reportes.filter(r => String(r.id_contrato) === String(modalHes.idContrato) && r.activo !== false);
             await Promise.all(
-                reportesAfectados.map(r => 
+                reportesAfectados.map(r =>
                     axios.patch(`/reports/${r.id_report}/`, { activo: false }).catch(() => axios.patch(`/reports/${r.id_report}/`, { activo: false }))
                 )
             );
@@ -300,16 +300,16 @@ export default function VistaContador({ modoNoche }) {
             mostrarNotificacion('No se pudo registrar la HES o subir el archivo a S3.', 'error');
         }
     };
-    
+
     const handleCambiarEstadoHES = async (idHes, nuevoEstado) => {
-    try {
-        await axios.patch(`/hes/${idHes}/`, { estado: nuevoEstado });
-        mostrarNotificacion(`Estado de la HES actualizado a [${nuevoEstado}].`);
-        cargarDatosFinancieros();
-    } catch (err) {
-        mostrarNotificacion(extraerErrorApi(err, 'No se pudo actualizar el estado de la HES.'), 'error');
-    }
-};
+        try {
+            await axios.patch(`/hes/${idHes}/`, { estado: nuevoEstado });
+            mostrarNotificacion(`Estado de la HES actualizado a [${nuevoEstado}].`);
+            cargarDatosFinancieros();
+        } catch (err) {
+            mostrarNotificacion(extraerErrorApi(err, 'No se pudo actualizar el estado de la HES.'), 'error');
+        }
+    };
 
     const handleCambioMontoNeto = (valorNeto) => {
         const neto = parseInt(valorNeto, 10) || 0;
@@ -323,7 +323,7 @@ export default function VistaContador({ modoNoche }) {
             montoTotal: totalCalculado
         }));
     };
-    
+
 
     const handleEmitirFactura = async (e) => {
         e.preventDefault();
@@ -370,26 +370,44 @@ export default function VistaContador({ modoNoche }) {
 
         try {
             const urlS3 = await subirArchivoAS3(archivoDocEmpresa);
-            const sesionStorage = JSON.parse(localStorage.getItem('usuario_multimak') || '{}');
-            const idRealUsuario = sesionStorage.id_usuario || sesionStorage.id;
+
+            let idRealUsuario = usuario?.id_usuario || usuario?.id || null;
+            if (!idRealUsuario) {
+                for (const clave of ['usuario_multimak', 'usuario', 'user', 'auth_user']) {
+                    const raw = localStorage.getItem(clave) || sessionStorage.getItem(clave);
+                    if (raw) {
+                        try {
+                            const obj = JSON.parse(raw);
+                            idRealUsuario = obj?.id_usuario || obj?.id || obj?.user?.id_usuario || obj?.user?.id;
+                            if (idRealUsuario) break;
+                        } catch { /* ignorar */ }
+                    }
+                }
+            }
 
             const payload = {
+                nombre_documento: nombreDocEmpresa.trim(),
                 tipo_documento: nombreDocEmpresa.trim(),
                 fecha_emision: fechaHoy,
                 fecha_carga: fechaHoy,
-                url_archivo: urlS3, 
-                id_usuario: idRealUsuario,
+                url_archivo: urlS3,
                 activo: true
             };
 
-            await axios.post('doc-empresa/', payload).catch(() => axios.post('/doc-empresa/', payload));
-            
-            mostrarNotificacion(`Documento [${nombreDocEmpresa}] agregado correctamente.`);
+            if (idRealUsuario) {
+                payload.id_usuario = parseInt(idRealUsuario, 10);
+            }
+
+            await axios.post('doc-empresa/', payload);
+
+            mostrarNotificacion(`Documento "${nombreDocEmpresa.trim()}" agregado correctamente.`);
             setArchivoDocEmpresa(null);
             setNombreDocEmpresa('');
+            e.target.reset();
             cargarDatosFinancieros();
         } catch (err) {
-            mostrarNotificacion('No se pudo subir el documento.', 'error');
+            const detalleServidor = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+            mostrarNotificacion(`Error al guardar: ${detalleServidor}`, 'error');
         }
     };
 
@@ -589,8 +607,8 @@ export default function VistaContador({ modoNoche }) {
                                                                 estadoActual === 'APROBADA'
                                                                     ? 'aprobada'
                                                                     : estadoActual === 'RECHAZADA'
-                                                                    ? 'rechazada'
-                                                                    : 'pendiente';
+                                                                        ? 'rechazada'
+                                                                        : 'pendiente';
 
                                                             return (
                                                                 <div className={`cnt-select-pill ${claseEstado}`}>
@@ -631,7 +649,7 @@ export default function VistaContador({ modoNoche }) {
                 </div>
             )}
 
- 
+
             {pestaña === 'Facturacion' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="cnt-panel-box">
@@ -948,7 +966,7 @@ export default function VistaContador({ modoNoche }) {
                                     <tr><td colSpan="4" className="cnt-no-data">No se registran documentos en la carpeta tributaria.</td></tr>
                                 ) : (
                                     docsEmpresa.map((doc, idx) => {
-                                        const nombreDocMostrado = doc.tipo_documento || doc.nombre || 'Documento Tributario';
+                                        const nombreDocMostrado = doc.nombre_documento || doc.tipo_documento || doc.nombre || 'Documento Tributario';
                                         const urlDocumentoFinal = doc.url_archivo || doc.archivo;
 
                                         return (
@@ -957,8 +975,8 @@ export default function VistaContador({ modoNoche }) {
                                                 <td className="mono">{doc.fecha_carga || doc.fecha_emision}</td>
                                                 <td><span className="cnt-badge-hes aprobada">Vigente</span></td>
                                                 <td>
-                                                    <button 
-                                                        className="cnt-btn-s3" 
+                                                    <button
+                                                        className="cnt-btn-s3"
                                                         onClick={() => abrirVisor({ url: urlDocumentoFinal, titulo: nombreDocMostrado })}
                                                     >
                                                         Ver Documento
@@ -1075,10 +1093,10 @@ export default function VistaContador({ modoNoche }) {
                             </div>
                             <div className="cnt-input-group">
                                 <label>Adjuntar Documento HES (Obligatorio - S3)</label>
-                                <input 
-                                    type="file" 
-                                    accept="application/pdf,image/*" 
-                                    onChange={(e) => setModalHes({ ...modalHes, archivoHES: e.target.files[0] })} 
+                                <input
+                                    type="file"
+                                    accept="application/pdf,image/*"
+                                    onChange={(e) => setModalHes({ ...modalHes, archivoHES: e.target.files[0] })}
                                 />
                             </div>
                             <button type="submit" className="cnt-btn-action primary">Guardar HES, Subir a S3 y Desactivar Turnos</button>
