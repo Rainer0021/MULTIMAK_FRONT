@@ -423,7 +423,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const cerrarVisorDoc = () => setModalDoc(prev => ({ ...prev, abierto: false, url: '' }));
     const descargarDocumento = async (url, nombreArchivo) => {
         try {
-            const res = await fetch(url);
+            const res = await fetch(url, { mode: 'cors', cache: 'reload' });
             const blob = await res.blob();
             const enlace = document.createElement('a');
             enlace.href = URL.createObjectURL(blob);

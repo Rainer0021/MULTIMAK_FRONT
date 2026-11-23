@@ -426,7 +426,7 @@ export default function VistaContador({ usuario, modoNoche }) {
 
     const descargarDocumento = async (url, nombreArchivo) => {
         try {
-            const res = await fetch(url);
+            const res = await fetch(url, { mode: 'cors', cache: 'reload' });
             const blob = await res.blob();
             const enlace = document.createElement('a');
             enlace.href = URL.createObjectURL(blob);
@@ -1172,7 +1172,7 @@ export default function VistaContador({ usuario, modoNoche }) {
                                     onClick={() => descargarDocumento(modalDoc.url, modalDoc.titulo)}
                                     className="cnt-btn-s3"
                                 >
-                                    Descargar ⬇
+                                    Descargar
                                 </button>
                                 <a href={modalDoc.url} target="_blank" rel="noopener noreferrer" className="cnt-btn-s3">Abrir en Pestaña Nueva ↗</a>
                                 <button onClick={() => setModalDoc({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false })} className="cnt-btn-close">✕</button>
