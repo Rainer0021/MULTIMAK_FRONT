@@ -424,6 +424,22 @@ export default function VistaContador({ usuario, modoNoche }) {
         });
     };
 
+    const descargarDocumento = async (url, nombreArchivo) => {
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            const enlace = document.createElement('a');
+            enlace.href = URL.createObjectURL(blob);
+            enlace.download = nombreArchivo || 'documento';
+            document.body.appendChild(enlace);
+            enlace.click();
+            enlace.remove();
+            URL.revokeObjectURL(enlace.href);
+        } catch {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    };
+
     const obtenerPatente = (idMaquina, detalle) => {
         if (detalle && detalle.patente) return detalle.patente;
         const encontrada = maquinarias.find((m) => m.id_maquina === idMaquina || m.id === idMaquina);
@@ -1151,6 +1167,13 @@ export default function VistaContador({ usuario, modoNoche }) {
                                 <p className="cnt-modal-sub">{modalDoc.subtitulo}</p>
                             </div>
                             <div className="cnt-modal-actions">
+                                <button
+                                    type="button"
+                                    onClick={() => descargarDocumento(modalDoc.url, modalDoc.titulo)}
+                                    className="cnt-btn-s3"
+                                >
+                                    Descargar ⬇
+                                </button>
                                 <a href={modalDoc.url} target="_blank" rel="noopener noreferrer" className="cnt-btn-s3">Abrir en Pestaña Nueva ↗</a>
                                 <button onClick={() => setModalDoc({ abierto: false, url: '', titulo: '', subtitulo: '', esPdf: false })} className="cnt-btn-close">✕</button>
                             </div>

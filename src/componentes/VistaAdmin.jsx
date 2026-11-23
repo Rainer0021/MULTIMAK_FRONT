@@ -421,6 +421,21 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     };
 
     const cerrarVisorDoc = () => setModalDoc(prev => ({ ...prev, abierto: false, url: '' }));
+    const descargarDocumento = async (url, nombreArchivo) => {
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            const enlace = document.createElement('a');
+            enlace.href = URL.createObjectURL(blob);
+            enlace.download = nombreArchivo || 'documento';
+            document.body.appendChild(enlace);
+            enlace.click();
+            enlace.remove();
+            URL.revokeObjectURL(enlace.href);
+        } catch {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    };
 
     const evaluarVencimiento = (fechaStr) => {
         if (!fechaStr) {
@@ -457,7 +472,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                 axios.get('/contratos/').catch(() => axios.get('contratos/')).catch(() => ({ data: [] })),
                 axios.get('doc-maquinaria/').catch(() => axios.get('/doc-maquinaria/')).catch(() => ({ data: [] })),
                 axios.get('mantenimientos/').catch(() => axios.get('/mantenimientos/')).catch(() => ({ data: [] })),
-                axios.get('resumen-kpis/').catch(() => axios.get('/resumen-kpis/')).catch(() => ({ data: {} })) 
+                axios.get('resumen-kpis/').catch(() => axios.get('/resumen-kpis/')).catch(() => ({ data: {} }))
             ]);
 
 
@@ -1071,7 +1086,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
         setErroresMaq({});
 
-  
+
         const documentosRequeridos = [
             { clave: 'soap', etiqueta: 'SOAP', tipoDoc: 'SOAP', campoFecha: 'fecha_venc_soap' },
             { clave: 'rev_tecnica', etiqueta: 'Revisión técnica', tipoDoc: 'REVISIÓN TÉCNICA', campoFecha: 'fecha_venc_rev_tecnica' },
@@ -1765,7 +1780,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                 fontSize: '18px',
                                                 marginBottom: '4px'
                                             }}>
-                                            
+
                                             </div>
                                             <strong style={{ fontSize: '13px', color: modoNoche ? '#f8fafc' : '#0f172a' }}>
                                                 Sin egresos en este período
@@ -3735,6 +3750,13 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 <p>{modalDoc.subtitulo} {modalDoc.folio && `- Referencia: ${modalDoc.folio}`}</p>
                             </div>
                             <div className="adm-modal-actions">
+                                <button
+                                    type="button"
+                                    onClick={() => descargarDocumento(modalDoc.url, modalDoc.titulo)}
+                                    className="adm-btn-file-view s3-ready"
+                                >
+                                    Descargar
+                                </button>
                                 <a
                                     href={modalDoc.url}
                                     target="_blank"
