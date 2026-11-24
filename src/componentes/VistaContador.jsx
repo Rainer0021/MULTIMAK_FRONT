@@ -93,7 +93,7 @@ export default function VistaContador({ usuario, modoNoche }) {
     const [filtroTipo, setFiltroTipo] = useState('todos');
     const [busqueda, setBusqueda] = useState('');
     const [busquedaContratoContador, setBusquedaContratoContador] = useState('');
-    const [pestaña, setPestaña] = useState('facturacion_hes');
+    const [pestaña, setPestaña] = useState('Gestión HES');
 
     const [mostrarFormContrato, setMostrarFormContrato] = useState(false);
 
@@ -284,23 +284,21 @@ export default function VistaContador({ usuario, modoNoche }) {
             // 1. Guardar HES en la API
             await axios.post('/hes/', payload).catch(() => axios.post('/hes/', payload));
 
-            // 2. Desactivar automáticamente los reportes contabilizados de este contrato
-            const reportesAfectados = reportes.filter(r => String(r.id_contrato) === String(modalHes.idContrato) && r.activo !== false);
-            await Promise.all(
-                reportesAfectados.map(r =>
-                    axios.patch(`/reports/${r.id_report}/`, { activo: false }).catch(() => axios.patch(`/reports/${r.id_report}/`, { activo: false }))
-                )
-            );
-
             mostrarNotificacion(`HES N° ${modalHes.numeroHes} registrada en S3 y reportes desactivados.`);
-            setModalHes({ abierto: false, idContrato: '', numeroHes: '', totalHoras: '', estado: 'APROBADA', archivoHES: null });
+            setModalHes({
+                abierto: false,
+                idContrato: '',
+                numeroHes: '',
+                totalHoras: '',
+                estado: 'POR APROBAR',
+                archivoHES: null
+            });
             cargarDatosFinancieros();
         } catch (err) {
-            console.error('Error al registrar HES:', err);
-            mostrarNotificacion('No se pudo registrar la HES o subir el archivo a S3.', 'error');
-        }
-    };
-
+                console.error('Error al registrar HES:', err);
+                mostrarNotificacion('No se pudo registrar la HES o subir el archivo a S3.', 'error');
+            }
+        };
     const handleCambiarEstadoHES = async (idHes, nuevoEstado) => {
         try {
             await axios.patch(`/hes/${idHes}/`, { estado: nuevoEstado });
@@ -467,15 +465,22 @@ export default function VistaContador({ usuario, modoNoche }) {
         const clienteObj = clientes.find(c => String(c.id_cliente || c.id) === String(cont.id_cliente));
         const clienteNombre = cont.cliente_nombre || clienteObj?.razon_social || clienteObj?.nombre || `Cliente #${cont.id_cliente}`;
 
-        const hesAsociada = hesList.find(h => String(h.id_contrato?.id_contrato || h.id_contrato) === String(cont.id_contrato));
+        const hesDelContrato = hesList
+            .filter(
+                (h) =>
+                    String(h.id_contrato?.id_contrato ?? h.id_contrato) ===
+                    String(cont.id_contrato)
+            )
+            .sort((a, b) => (b.id_hes ?? b.id ?? 0) - (a.id_hes ?? a.id ?? 0));
 
+        const hesReciente = hesDelContrato[0] || null;
         return {
             id_contrato: cont.id_contrato,
             cliente: clienteNombre,
             listaMaquinas: obtenerMaquinasDeContrato(cont),
             totalHoras,
             subtotal,
-            hes: hesAsociada,
+            hes: hesReciente,
             cantidadTurnos: reportesAsociados.length
         };
     });
@@ -504,6 +509,7 @@ export default function VistaContador({ usuario, modoNoche }) {
         const nombreCto = (c.nombre_contrato || '').toLowerCase();
         return cliente.includes(term) || nombreCto.includes(term);
     });
+
 
     return (
         <div className="cnt-view-container">
@@ -548,11 +554,11 @@ export default function VistaContador({ usuario, modoNoche }) {
 
             {/* NAVEGACIÓN DE PESTAÑAS */}
             <div className="cnt-nav-group">
-                <button type="button" onClick={() => setPestaña('Gestion HES')} className={`cnt-nav-btn ${pestaña === 'Gestion HES' ? 'active' : ''}`}>
-                    Gestion HES <span className="cnt-nav-badge">{resumenPorContrato.length}</span>
+                <button type="button" onClick={() => setPestaña('Gestión HES')} className={`cnt-nav-btn ${pestaña === 'Gestión HES' ? 'active' : ''}`}>
+                    Gestión HES <span className="cnt-nav-badge">{resumenPorContrato.length}</span>
                 </button>
-                <button type="button" onClick={() => setPestaña('Facturacion')} className={`cnt-nav-btn ${pestaña === 'Facturacion' ? 'active' : ''}`}>
-                    Facturacion <span className="cnt-nav-badge">{hesList.length}</span>
+                <button type="button" onClick={() => setPestaña('Facturación')} className={`cnt-nav-btn ${pestaña === 'Facturación' ? 'active' : ''}`}>
+                    Facturación <span className="cnt-nav-badge">{hesList.length}</span>
                 </button>
                 <button type="button" onClick={() => setPestaña('contratos')} className={`cnt-nav-btn ${pestaña === 'contratos' ? 'active' : ''}`}>
                     Contratos y Tarifas <span className="cnt-nav-badge">{contratos.length}</span>
@@ -566,7 +572,7 @@ export default function VistaContador({ usuario, modoNoche }) {
             </div>
 
 
-            {pestaña === 'Gestion HES' && (
+            {pestaña === 'Gestión HES' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="cnt-panel-box">
                         <div className="cnt-panel-header">
@@ -592,67 +598,121 @@ export default function VistaContador({ usuario, modoNoche }) {
                                 </thead>
                                 <tbody>
                                     {resumenPorContrato.length === 0 ? (
-                                        <tr><td colSpan="7" className="cnt-no-data">No hay contratos con horas registradas.</td></tr>
+                                        <tr>
+                                            <td colSpan="8" className="cnt-no-data">
+                                                No hay contratos con horas registradas.
+                                            </td>
+                                        </tr>
                                     ) : (
                                         resumenPorContrato.map((item) => {
-                                            const hesExistente = item.hes;
+                                            const hesActual = item.hesReciente || item.hes || null;
+                                            const estadoActual = hesActual
+                                                ? (hesActual.estado || 'PENDIENTE').toUpperCase()
+                                                : null;
+                                            const claseEstado =
+                                                estadoActual === 'APROBADA'
+                                                    ? 'aprobada'
+                                                    : estadoActual === 'RECHAZADA'
+                                                        ? 'rechazada'
+                                                        : 'pendiente';
+                                            const hesYaFacturada = Boolean(
+                                                hesActual &&
+                                                    (hesActual.id_hes || hesActual.numero_hes) &&
+                                                    (facturas || []).some((fac) => {
+                                                        const facHesId =
+                                                            fac.id_hes?.id_hes ??
+                                                            (typeof fac.id_hes === 'number' || typeof fac.id_hes === 'string'
+                                                                ? fac.id_hes
+                                                                : null) ??
+                                                            fac.hes?.id_hes ??
+                                                            (typeof fac.hes === 'number' || typeof fac.hes === 'string' ? fac.hes : null);
+
+                                                        const mismaPorId =
+                                                            hesActual.id_hes != null &&
+                                                            facHesId != null &&
+                                                            String(facHesId) === String(hesActual.id_hes);
+
+                                                        const mismaPorNumero =
+                                                            !hesActual.id_hes &&
+                                                            hesActual.numero_hes &&
+                                                            fac.numero_hes &&
+                                                            String(fac.numero_hes).trim() === String(hesActual.numero_hes).trim() &&
+                                                            String(fac.id_contrato?.id_contrato || fac.id_contrato) ===
+                                                                String(hesActual.id_contrato?.id_contrato || hesActual.id_contrato);
+
+                                                        return mismaPorId || mismaPorNumero;
+                                                    })
+                                            );
                                             return (
                                                 <tr key={item.id_contrato}>
                                                     <td className="bold">{item.cliente}</td>
                                                     <td>
                                                         {item.listaMaquinas.map((m, idx) => (
                                                             <div key={idx} style={{ fontSize: '12px' }}>
-                                                                <strong className="mono">{m.patente}</strong> - <span style={{ color: '#16a34a', fontWeight: 'bold' }}>${parseInt(m.tarifa, 10).toLocaleString('es-CL')}/h</span>
+                                                                <strong className="mono">{m.patente}</strong> -{' '}
+                                                                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>
+                                                                    ${parseInt(m.tarifa, 10).toLocaleString('es-CL')}/h
+                                                                </span>
                                                             </div>
                                                         ))}
                                                     </td>
                                                     <td className="cnt-panel-sub">{item.cantidadTurnos} turnos</td>
                                                     <td className="horas-val right">{item.totalHoras.toFixed(1)} h</td>
-                                                    <td className="monto-ingreso right">${parseInt(item.subtotal, 10).toLocaleString('es-CL')}</td>
+                                                    <td className="monto-ingreso right">
+                                                        ${parseInt(item.subtotal, 10).toLocaleString('es-CL')}
+                                                    </td>
                                                     <td>
-                                                        {hesExistente ? (
-                                                            <span className="bold mono">N° {hesExistente.numero_hes}</span>
+                                                        {hesActual ? (
+                                                            <span className="bold mono">N° {hesActual.numero_hes}</span>
                                                         ) : (
                                                             <span className="cnt-panel-sub">—</span>
                                                         )}
                                                     </td>
                                                     <td>
-                                                        {hesExistente ? (() => {
-                                                            const estadoActual = (hesExistente.estado || 'PENDIENTE').toUpperCase();
-                                                            const claseEstado =
-                                                                estadoActual === 'APROBADA'
-                                                                    ? 'aprobada'
-                                                                    : estadoActual === 'RECHAZADA'
-                                                                        ? 'rechazada'
-                                                                        : 'pendiente';
-
-                                                            return (
+                                                        {hesActual ? (
+                                                            hesYaFacturada ? (
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <span className={`cnt-badge-hes ${claseEstado}`}>{estadoActual}</span>
+                                                                    <span
+                                                                        className="cnt-panel-sub"
+                                                                        style={{ fontSize: '11px' }}
+                                                                        title="Esta HES ya tiene una factura emitida"
+                                                                    >
+                                                                        (Facturada)
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
                                                                 <div className={`cnt-select-pill ${claseEstado}`}>
                                                                     <select
                                                                         value={estadoActual}
-                                                                        onChange={(e) => handleCambiarEstadoHES(hesExistente.id_hes, e.target.value)}
+                                                                        onChange={(e) => handleCambiarEstadoHES(hesActual.id_hes, e.target.value)}
                                                                     >
-                                                                        <option value="PENDIENTE">POR APROBAR</option>
+                                                                        <option value="POR APROBAR">POR APROBAR</option>
                                                                         <option value="APROBADA">APROBADA</option>
                                                                         <option value="RECHAZADA">RECHAZADA</option>
                                                                     </select>
                                                                 </div>
-                                                            );
-                                                        })() : (
+                                                            )
+                                                        ) : (
                                                             <span className="cnt-badge-hes pendiente">HES Pendiente</span>
                                                         )}
                                                     </td>
                                                     <td className="right">
-                                                        {!hesExistente ? (
-                                                            <button
-                                                                className="cnt-btn-row-act hes"
-                                                                onClick={() => setModalHes({ abierto: true, idContrato: item.id_contrato, numeroHes: '', totalHoras: item.totalHoras, estado: 'APROBADA', archivoHES: null })}
-                                                            >
-                                                                + Registrar HES
-                                                            </button>
-                                                        ) : (
-                                                            <span style={{ fontSize: '11px', color: '#64748b' }}>Registrada en Gestión HES</span>
-                                                        )}
+                                                        <button
+                                                            className="cnt-btn-row-act hes"
+                                                            onClick={() =>
+                                                                setModalHes({
+                                                                    abierto: true,
+                                                                    idContrato: item.id_contrato,
+                                                                    numeroHes: '',
+                                                                    totalHoras: item.totalHoras,
+                                                                    estado: 'POR APROBAR',
+                                                                    archivoHES: null
+                                                                })
+                                                            }
+                                                        >
+                                                            + Registrar HES
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             );
@@ -666,7 +726,7 @@ export default function VistaContador({ usuario, modoNoche }) {
             )}
 
 
-            {pestaña === 'Facturacion' && (
+            {pestaña === 'Facturación' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="cnt-panel-box">
                         <div className="cnt-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
