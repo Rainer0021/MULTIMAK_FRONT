@@ -801,7 +801,7 @@ export default function VistaContador({ usuario, modoNoche }) {
                                                                     });
                                                                 }}
                                                             >
-                                                                Emitir Factura (API) 📄
+                                                                Emitir Factura 📄
                                                             </button>
                                                         ) : (
                                                             <span style={{ fontSize: '11px', color: '#dc2626' }}>Requiere HES Aprobada</span>
@@ -1175,7 +1175,7 @@ export default function VistaContador({ usuario, modoNoche }) {
                                     onChange={(e) => setModalHes({ ...modalHes, archivoHES: e.target.files[0] })}
                                 />
                             </div>
-                            <button type="submit" className="cnt-btn-action primary">Guardar HES, Subir a S3 y Desactivar Turnos</button>
+                            <button type="submit" className="cnt-btn-action primary">Guardar HES</button>
                         </form>
                     </div>
                 </div>
