@@ -188,8 +188,19 @@ export default function VistaContador({ usuario, modoNoche }) {
         const errores = {};
 
         if (!formContrato.id_cliente) errores.id_cliente = 'Selecciona un cliente';
-        if (!formContrato.fecha_inicio) errores.fecha_inicio = 'Ingresa la fecha de inicio.';
-        if (!formContrato.fecha_fin) errores.fecha_fin = 'Ingresa la fecha de término.';
+        if (!formContrato.fecha_inicio) {
+            errores.fecha_inicio = 'Ingresa la fecha de inicio.';
+        } else if (formContrato.fecha_inicio < fechaHoy) {
+            errores.fecha_inicio = 'La fecha de inicio no puede ser anterior a hoy.';
+        }
+
+        if (!formContrato.fecha_fin) {
+            errores.fecha_fin = 'Ingresa la fecha de término.';
+        } else if (formContrato.fecha_fin < fechaHoy) {
+            errores.fecha_fin = 'La fecha de término no puede ser anterior a hoy.';
+        } else if (formContrato.fecha_inicio && formContrato.fecha_fin < formContrato.fecha_inicio) {
+            errores.fecha_fin = 'La fecha de término no puede ser anterior a la de inicio.';
+        }
 
         const erroresMaquinas = formContrato.maquinas_asignadas.map((m) => {
             const fila = { id_maquina: '', tarifa_hora: '', detalle: '' };
@@ -200,7 +211,7 @@ export default function VistaContador({ usuario, modoNoche }) {
 
         if (Object.keys(errores).length > 0 || erroresMaquinas.some(m => m.id_maquina || m.tarifa_hora)) {
             setErroresFormContrato({ ...errores, maquinas: erroresMaquinas });
-            mostrarNotificacion('Revisa los campos en rojo.', 'error');
+            mostrarNotificacion(errores.fecha_inicio || errores.fecha_fin || 'Completa todos los campos.', 'error');
             return;
         }
 
@@ -217,18 +228,19 @@ export default function VistaContador({ usuario, modoNoche }) {
             const idNuevoContrato = resContrato.data?.id_contrato || resContrato.data?.id;
 
             if (idNuevoContrato) {
-                const promesas = formContrato.maquinas_asignadas.map(m =>
-                    axios.post('contrato-maquinarias/', {
-                        id_contrato: idNuevoContrato,
-                        id_maquina: parseInt(m.id_maquina, 10),
-                        tarifa_hora: parseInt(m.tarifa_hora, 10)
-                    }).catch(() => axios.post('/contrato-maquinarias/', {
-                        id_contrato: idNuevoContrato,
-                        id_maquina: parseInt(m.id_maquina, 10),
-                        tarifa_hora: parseInt(m.tarifa_hora, 10)
-                    }))
-                );
-                await Promise.all(promesas);
+                try {
+                    const promesas = formContrato.maquinas_asignadas.map(m =>
+                        axios.post('contrato-maquinarias/', {
+                            id_contrato: idNuevoContrato,
+                            id_maquina: parseInt(m.id_maquina, 10),
+                            tarifa_hora: parseInt(m.tarifa_hora, 10)
+                        })
+                    );
+                    await Promise.all(promesas);
+                } catch (errMaq) {
+                    await axios.delete(`/contratos/${idNuevoContrato}/`).catch(() => {});
+                    throw errMaq;
+                }
             }
 
             mostrarNotificacion('Contrato registrado correctamente.');
@@ -904,6 +916,7 @@ export default function VistaContador({ usuario, modoNoche }) {
                                         <label>Fecha Inicio</label>
                                         <input
                                             type="date"
+                                            min={fechaHoy}
                                             value={formContrato.fecha_inicio}
                                             onChange={(e) => setFormContrato({ ...formContrato, fecha_inicio: e.target.value })}
                                         />
@@ -912,6 +925,7 @@ export default function VistaContador({ usuario, modoNoche }) {
                                         <label>Fecha Fin (Pactada)</label>
                                         <input
                                             type="date"
+                                            min={formContrato.fecha_inicio || fechaHoy}
                                             value={formContrato.fecha_fin}
                                             onChange={(e) => setFormContrato({ ...formContrato, fecha_fin: e.target.value })}
                                         />
@@ -930,11 +944,30 @@ export default function VistaContador({ usuario, modoNoche }) {
                                                 onChange={(e) => handleCambioMaquinaFila(index, 'id_maquina', e.target.value)}
                                             >
                                                 <option value="">Selecciona equipo...</option>
-                                                {maquinarias.map((m) => (
-                                                    <option key={m.id_maquina || m.id} value={m.id_maquina || m.id}>
-                                                        {m.patente} - {m.tipo}
-                                                    </option>
-                                                ))}
+                                                {maquinarias.map((m) => {
+                                                    const idMaq = m.id_maquina || m.id;
+                                                    const choque = buscarChoqueMaquina(
+                                                        contratos,
+                                                        idMaq,
+                                                        formContrato.fecha_inicio,
+                                                        formContrato.fecha_fin
+                                                    );
+                                                    const yaElegidaEnOtraFila = formContrato.maquinas_asignadas.some(
+                                                        (otra, idx) => idx !== index && String(otra.id_maquina) === String(idMaq)
+                                                    );
+                                                    const bloqueada = Boolean(choque || yaElegidaEnOtraFila);
+
+                                                    return (
+                                                        <option key={idMaq} value={idMaq} disabled={bloqueada}>
+                                                            {m.patente} - {m.tipo}
+                                                            {choque
+                                                                ? ` (Ocupada en ${nombreDeContrato(choque)}: ${formatoFechaCL(choque.fecha_inicio)} al ${formatoFechaCL(choque.fecha_fin)})`
+                                                                : yaElegidaEnOtraFila
+                                                                    ? ' (Ya agregada)'
+                                                                    : ''}
+                                                        </option>
+                                                    );
+                                                })}
                                             </select>
                                             <input
                                                 type="number"
@@ -1211,7 +1244,7 @@ export default function VistaContador({ usuario, modoNoche }) {
                                 <label>Monto Total ($CLP)</label>
                                 <input type="number" value={modalFactura.montoTotal} readOnly />
                             </div>
-                            <button type="submit" className="cnt-btn-action dark">Emitir Factura a API</button>
+                            <button type="submit" className="cnt-btn-action dark">Emitir Factura</button>
                         </form>
                     </div>
                 </div>
