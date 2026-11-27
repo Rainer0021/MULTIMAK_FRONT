@@ -239,7 +239,7 @@ export default function VistaOperador({ operador, usuario, modoNoche }) {
         if (cargoCombustible) {
             const litros = parseFloat(combustible);
             if (!combustible || isNaN(litros) || litros <= 0) {
-                nuevosErrores.combustible = 'Indica los litros cargados (mas de 0).';
+                nuevosErrores.combustible = 'No se permiten valores negativos';
             } else if (litros > 2000) {
                 nuevosErrores.combustible = 'Revisa los litros: el valor parece excesivo.';
             }

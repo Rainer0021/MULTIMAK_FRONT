@@ -269,6 +269,18 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const [errorMant, setErrorMant] = useState('');
     const [guardandoMant, setGuardandoMant] = useState(false);
 
+    // Registro manual de partes diarios por el administrador
+    const FORM_PARTE_VACIO = {
+        id_operador: '', id_contrato: '', id_maquina: '', fecha: '', hora_entrada: '08:00', hora_salida: '18:00',
+        horometro_final: '', combustible: '', conformidad: false
+    };
+    const [modalParte, setModalParte] = useState(false);
+    const [formParte, setFormParte] = useState(FORM_PARTE_VACIO);
+    const [contratosParte, setContratosParte] = useState([]);
+    const [archivoParte, setArchivoParte] = useState(null);
+    const [erroresParte, setErroresParte] = useState({});
+    const [guardandoParte, setGuardandoParte] = useState(false);
+
     const [modalEliminar, setModalEliminar] = useState({
         abierto: false,
         titulo: '',
@@ -437,6 +449,10 @@ export default function VistaAdmin({ usuario, modoNoche }) {
         }
     };
 
+    // Naranja: misma insignia ámbar de siempre (forma, punto y bordes iguales) con el tono corrido hacia naranja.
+    const ESTILO_NARANJA = { filter: 'hue-rotate(-14deg) saturate(1.35)' };
+
+    // Escala de urgencia: vencido > crítico (≤7 días) > urgente (≤15) > por vencer (≤30) > vigente
     const evaluarVencimiento = (fechaStr) => {
         if (!fechaStr) {
             return { estado: 'SIN_FECHA', clase: 'adm-tag-muted', texto: 'Sin registro', detalle: 'No hay fecha de vencimiento registrada' };
@@ -448,15 +464,23 @@ export default function VistaAdmin({ usuario, modoNoche }) {
             const hace = Math.abs(dif);
             return {
                 estado: 'VENCIDO',
+                nivel: 4,
                 clase: 'adm-badge-red',
                 texto: hace <= 30 ? `Venció hace ${textoDias(hace)}` : `Venció el ${fecha}`,
                 detalle: `Venció el ${fecha}`
             };
         }
-        if (dif === 0) return { estado: 'ALERTA', clase: 'adm-badge-amber', texto: 'Vence hoy', detalle: `Vence hoy (${fecha})` };
-        if (dif === 1) return { estado: 'ALERTA', clase: 'adm-badge-amber', texto: 'Vence mañana', detalle: `Vence el ${fecha}` };
-        if (dif <= 30) return { estado: 'ALERTA', clase: 'adm-badge-amber', texto: `Vence en ${textoDias(dif)}`, detalle: `Vence el ${fecha}` };
-        return { estado: 'AL_DIA', clase: 'adm-badge-green', texto: `Vigente hasta ${fecha}`, detalle: `Faltan ${textoDias(dif)}` };
+        if (dif <= 7) {
+            const texto = dif === 0 ? 'Vence hoy' : dif === 1 ? 'Vence mañana' : `Vence en ${textoDias(dif)}`;
+            return { estado: 'ALERTA', nivel: 3, clase: 'adm-badge-red', texto, detalle: `Crítico: vence el ${fecha}` };
+        }
+        if (dif <= 15) {
+            return { estado: 'ALERTA', nivel: 2, clase: 'adm-badge-amber', estilo: ESTILO_NARANJA, texto: `Vence en ${textoDias(dif)}`, detalle: `Urgente: vence el ${fecha}` };
+        }
+        if (dif <= 30) {
+            return { estado: 'ALERTA', nivel: 1, clase: 'adm-badge-amber', texto: `Vence en ${textoDias(dif)}`, detalle: `Vence el ${fecha}` };
+        }
+        return { estado: 'AL_DIA', nivel: 0, clase: 'adm-badge-green', texto: `Vigente hasta ${fecha}`, detalle: `Faltan ${textoDias(dif)}` };
     };
 
     const cargarTodo = async () => {
@@ -564,6 +588,90 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const alertasPendientes = maquinasConAlerta.length - alertasProximas;
     const formatoHoras = (n) => Number(n).toLocaleString('es-CL');
     const textoPauta = (m) => `Mantención de ${formatoHoras(m.pautaMostrada)} hrs${m.pautaMostrada % 1000 === 0 ? ' (mayor)' : ''}`;
+    const abrirModalParte = async () => {
+        setFormParte({ ...FORM_PARTE_VACIO, fecha: fechaHoy });
+        setArchivoParte(null);
+        setErroresParte({});
+        setModalParte(true);
+        try {
+            // Contratos vigentes hoy con sus máquinas y el horómetro actual de cada una
+            const res = await axios.get('contratos-operador/');
+            setContratosParte(Array.isArray(res.data) ? res.data : []);
+        } catch {
+            setContratosParte([]);
+            setErroresParte({ general: 'No se pudieron cargar los contratos vigentes. Cierra e intenta nuevamente.' });
+        }
+    };
+
+    const cerrarModalParte = () => {
+        if (guardandoParte) return;
+        setModalParte(false);
+    };
+
+    const contratoParteSel = contratosParte.find(c => String(c.id_contrato) === String(formParte.id_contrato));
+    const maquinaParteSel = contratoParteSel?.maquinas?.find(m => String(m.id_maquina) === String(formParte.id_maquina));
+    const horoInicialParte = maquinaParteSel ? Number(maquinaParteSel.horometro_actual) : null;
+
+    const guardarParte = async (e) => {
+        e.preventDefault();
+        const f = formParte;
+        const err = {};
+        if (!f.id_operador) err.id_operador = 'Selecciona el operador.';
+        if (!f.id_contrato) err.id_contrato = 'Selecciona un contrato.';
+        if (f.id_contrato && !f.id_maquina) err.id_maquina = 'Selecciona una máquina.';
+        if (!f.fecha) err.fecha = 'Indica la fecha.';
+        else if (f.fecha > fechaHoy) err.fecha = 'La fecha no puede ser posterior a hoy.';
+        if (f.hora_salida <= f.hora_entrada) err.horario = 'La hora de término debe ser posterior a la de inicio.';
+
+        const hFinal = parseFloat(f.horometro_final);
+        if (!f.horometro_final || isNaN(hFinal)) err.horometro_final = 'Ingresa el horómetro final.';
+        else if (horoInicialParte !== null && hFinal <= horoInicialParte) err.horometro_final = `Debe ser mayor al inicial (${horoInicialParte}).`;
+        else if (horoInicialParte !== null && hFinal - horoInicialParte > 24) err.horometro_final = 'La jornada no puede superar las 24 horas.';
+
+        if (f.combustible !== '') {
+            const l = parseFloat(f.combustible);
+            if (isNaN(l) || l < 0) err.combustible = 'Litros no válidos.';
+            else if (l > 2000) err.combustible = 'Revisa los litros: el valor parece excesivo.';
+        }
+        if (!f.conformidad) err.conformidad = 'Confirma que el parte cuenta con el V°B° del supervisor.';
+
+        if (Object.keys(err).length) {
+            setErroresParte({ ...err, general: 'Revisa los campos marcados en rojo.' });
+            return;
+        }
+
+        setGuardandoParte(true);
+        setErroresParte({});
+        try {
+            let urlFirma = '';
+            if (archivoParte) urlFirma = await subirArchivoAS3(archivoParte);
+
+            const payload = {
+                id_operador: parseInt(f.id_operador, 10),
+                id_contrato: parseInt(f.id_contrato, 10),
+                id_maquina: parseInt(f.id_maquina, 10),
+                fecha: f.fecha,
+                hora_entrada: f.hora_entrada.length === 5 ? `${f.hora_entrada}:00` : f.hora_entrada,
+                hora_salida: f.hora_salida.length === 5 ? `${f.hora_salida}:00` : f.hora_salida,
+                horometro_inicial: horoInicialParte,
+                horometro_final: hFinal,
+                combustible_litros: f.combustible === '' ? 0 : parseFloat(f.combustible),
+                firmado: true,
+            };
+            if (urlFirma) payload.url_firma = urlFirma;
+
+            await axios.post('reports/', payload);
+            setModalParte(false);
+            setMensajeExito('Parte diario registrado correctamente.');
+            cargarTodo();
+        } catch (er) {
+            setErroresParte(extraerErroresApi(er, 'No se pudo registrar el parte diario. Intenta nuevamente.',
+                ['id_operador', 'id_contrato', 'id_maquina', 'fecha', 'horometro_final', 'combustible_litros']));
+        } finally {
+            setGuardandoParte(false);
+        }
+    };
+
     const abrirModalMantencion = (m) => {
         const taller = String(m.estado || '').toUpperCase().includes('TALLER');
         setFormMant({
@@ -1365,8 +1473,12 @@ export default function VistaAdmin({ usuario, modoNoche }) {
     const validarCampoGasto = (nombre, valor) => {
         let msg = null;
         if (nombre === 'monto') {
-            if (!valor) msg = 'Ingresa el monto del gasto.';
-            else if (parseInt(valor, 10) <= 0) msg = '';
+            const n = Number(valor);
+            if (valor === '' || valor === null || valor === undefined) msg = 'Ingresa el monto del gasto.';
+            else if (isNaN(n)) msg = 'El monto debe ser un valor numérico.';
+            else if (n < 0) msg = 'No se permiten valores negativos.';
+            else if (n === 0) msg = 'El monto debe ser mayor a 0.';
+            else if (!Number.isInteger(n)) msg = 'Ingresa el monto en pesos, sin decimales.';
         }
         if (nombre === 'id_maquina' && !valor) {
             msg = 'Selecciona la maquinaria asociada.';
@@ -2769,9 +2881,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                         {nombreEstadoMaquina(m.estado)}
                                                     </span>
                                                 </td>
-                                                <td><span className={stSoap.clase} title={stSoap.detalle}>{stSoap.texto}</span></td>
-                                                <td><span className={stRev.clase} title={stRev.detalle}>{stRev.texto}</span></td>
-                                                <td><span className={stPermiso.clase} title={stPermiso.detalle}>{stPermiso.texto}</span></td>
+                                                <td><span className={stSoap.clase} style={stSoap.estilo} title={stSoap.detalle}>{stSoap.texto}</span></td>
+                                                <td><span className={stRev.clase} style={stRev.estilo} title={stRev.detalle}>{stRev.texto}</span></td>
+                                                <td><span className={stPermiso.clase} style={stPermiso.estilo} title={stPermiso.detalle}>{stPermiso.texto}</span></td>
 
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
@@ -3050,7 +3162,7 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                                     </div>
                                                 </td>
 
-                                                <td><span className={stLic.clase} title={stLic.detalle}>{stLic.texto}</span></td>
+                                                <td><span className={stLic.clase} style={stLic.estilo} title={stLic.detalle}>{stLic.texto}</span></td>
 
                                                 <td>
                                                     {urlLic ? (
@@ -3495,6 +3607,9 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                 Registro de horas trabajadas y cálculo de facturación por máquina.
                             </p>
                         </div>
+                        <button type="button" className="adm-btn-primary" onClick={abrirModalParte}>
+                            + Registrar parte diario
+                        </button>
                     </div>
 
                     <div className="adm-card">
@@ -3684,6 +3799,195 @@ export default function VistaAdmin({ usuario, modoNoche }) {
                                     </button>
                                     <button type="submit" className="adm-btn-submit" disabled={guardandoMant}>
                                         {guardandoMant ? 'Guardando...' : 'Guardar mantención'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {modalParte && (() => {
+                const rojo = { color: '#dc2626', fontSize: '11px', fontWeight: '700', marginTop: '4px', display: 'block' };
+                const borde = (c) => ({ borderColor: erroresParte[c] ? '#dc2626' : '' });
+                return (
+                    <div className="adm-modal-overlay" onClick={cerrarModalParte}>
+                        <div className="adm-modal-content" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
+                            <div className="adm-modal-header">
+                                <div className="adm-modal-title-group">
+                                    <h3>Registrar parte diario</h3>
+                                    <p>Registro manual de horas trabajadas en nombre de un operador.</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={cerrarModalParte}
+                                    style={{ background: 'none', border: 'none', fontSize: '18px', fontWeight: '800', cursor: 'pointer', color: modoNoche ? '#cbd5e1' : '#64748b' }}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <form onSubmit={guardarParte} noValidate>
+                                <div className="adm-modal-body" style={{ padding: '20px 24px', display: 'block', maxHeight: '70vh', overflowY: 'auto' }}>
+                                    <div className="adm-crud-form" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                        <div className="adm-field">
+                                            <label>Operador *</label>
+                                            <select
+                                                value={formParte.id_operador}
+                                                onChange={e => setFormParte({ ...formParte, id_operador: e.target.value })}
+                                                style={borde('id_operador')}
+                                            >
+                                                <option value="">Selecciona un operador...</option>
+                                                {operadores.filter(o => o.activo !== false).map(o => (
+                                                    <option key={o.id_operador} value={o.id_operador}>
+                                                        {`${o.nombre || ''} ${o.apellido || ''}`.trim() || `Operador #${o.id_operador}`}{o.rut ? ` · ${o.rut}` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {erroresParte.id_operador && <span style={rojo}>{erroresParte.id_operador}</span>}
+                                        </div>
+
+                                        <div className="adm-grid-2" style={{ gap: '14px' }}>
+                                            <div className="adm-field">
+                                                <label>Contrato *</label>
+                                                <select
+                                                    value={formParte.id_contrato}
+                                                    onChange={e => setFormParte({ ...formParte, id_contrato: e.target.value, id_maquina: '', horometro_final: '' })}
+                                                    style={borde('id_contrato')}
+                                                >
+                                                    <option value="">Selecciona un contrato...</option>
+                                                    {contratosParte.map(c => (
+                                                        <option key={c.id_contrato} value={c.id_contrato}>
+                                                            {c.nombre}{c.cliente ? ` - ${c.cliente}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {erroresParte.id_contrato && <span style={rojo}>{erroresParte.id_contrato}</span>}
+                                            </div>
+                                            <div className="adm-field">
+                                                <label>Máquina *</label>
+                                                <select
+                                                    value={formParte.id_maquina}
+                                                    disabled={!formParte.id_contrato}
+                                                    onChange={e => setFormParte({ ...formParte, id_maquina: e.target.value, horometro_final: '' })}
+                                                    style={borde('id_maquina')}
+                                                >
+                                                    <option value="">{formParte.id_contrato ? 'Selecciona una máquina...' : 'Primero elige el contrato'}</option>
+                                                    {(contratoParteSel?.maquinas || []).map(m => (
+                                                        <option key={m.id_maquina} value={m.id_maquina}>
+                                                            {m.patente} - {m.marca} {m.modelo}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {erroresParte.id_maquina && <span style={rojo}>{erroresParte.id_maquina}</span>}
+                                            </div>
+                                        </div>
+
+                                        <div className="adm-grid-3" style={{ gap: '14px' }}>
+                                            <div className="adm-field">
+                                                <label>Fecha *</label>
+                                                <input
+                                                    type="date"
+                                                    max={fechaHoy}
+                                                    value={formParte.fecha}
+                                                    onChange={e => setFormParte({ ...formParte, fecha: e.target.value })}
+                                                    style={borde('fecha')}
+                                                />
+                                                {erroresParte.fecha && <span style={rojo}>{erroresParte.fecha}</span>}
+                                            </div>
+                                            <div className="adm-field">
+                                                <label>Hora de inicio</label>
+                                                <input
+                                                    type="time"
+                                                    value={formParte.hora_entrada}
+                                                    onChange={e => setFormParte({ ...formParte, hora_entrada: e.target.value })}
+                                                    style={borde('horario')}
+                                                />
+                                            </div>
+                                            <div className="adm-field">
+                                                <label>Hora de término</label>
+                                                <input
+                                                    type="time"
+                                                    value={formParte.hora_salida}
+                                                    onChange={e => setFormParte({ ...formParte, hora_salida: e.target.value })}
+                                                    style={borde('horario')}
+                                                />
+                                            </div>
+                                        </div>
+                                        {erroresParte.horario && <span style={{ ...rojo, marginTop: '-8px' }}>{erroresParte.horario}</span>}
+
+                                        <div className="adm-grid-3" style={{ gap: '14px' }}>
+                                            <div className="adm-field">
+                                                <label>Horómetro inicial (h)</label>
+                                                <input
+                                                    type="text"
+                                                    readOnly
+                                                    value={horoInicialParte !== null ? horoInicialParte : ''}
+                                                    placeholder="Elige la máquina"
+                                                    style={{ background: modoNoche ? '#0f172a' : '#f1f5f9', cursor: 'not-allowed' }}
+                                                />
+                                            </div>
+                                            <div className="adm-field">
+                                                <label>Horómetro final (h) *</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    value={formParte.horometro_final}
+                                                    onChange={e => setFormParte({ ...formParte, horometro_final: e.target.value })}
+                                                    style={borde('horometro_final')}
+                                                />
+                                                {erroresParte.horometro_final && <span style={rojo}>{erroresParte.horometro_final}</span>}
+                                            </div>
+                                            <div className="adm-field">
+                                                <label>Combustible (L)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    placeholder="Opcional"
+                                                    value={formParte.combustible}
+                                                    onChange={e => setFormParte({ ...formParte, combustible: e.target.value })}
+                                                    style={borde('combustible')}
+                                                />
+                                                {erroresParte.combustible && <span style={rojo}>{erroresParte.combustible}</span>}
+                                            </div>
+                                        </div>
+
+                                        {horoInicialParte !== null && formParte.horometro_final !== '' && parseFloat(formParte.horometro_final) > horoInicialParte && (
+                                            <p style={{ margin: 0, fontSize: '13px', fontWeight: '700' }}>
+                                                Horas trabajadas: {(parseFloat(formParte.horometro_final) - horoInicialParte).toFixed(1)} h
+                                            </p>
+                                        )}
+
+                                        <div className="adm-field">
+                                            <label>Foto del parte firmado (opcional)</label>
+                                            <input
+                                                type="file"
+                                                accept="image/*,application/pdf"
+                                                onChange={e => setArchivoParte(e.target.files?.[0] || null)}
+                                            />
+                                        </div>
+
+                                        <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                                            <input
+                                                type="checkbox"
+                                                style={{ width: 'auto', marginTop: '3px' }}
+                                                checked={formParte.conformidad}
+                                                onChange={e => setFormParte({ ...formParte, conformidad: e.target.checked })}
+                                            />
+                                            <span>Confirmo que este parte cuenta con el V°B° del supervisor en terreno.</span>
+                                        </label>
+                                        {erroresParte.conformidad && <span style={{ ...rojo, marginTop: '-8px' }}>{erroresParte.conformidad}</span>}
+
+                                        {erroresParte.general && <div className="adm-alert-fail">{erroresParte.general}</div>}
+                                    </div>
+                                </div>
+                                <div className="adm-modal-footer" style={{ justifyContent: 'flex-end', gap: '12px' }}>
+                                    <button type="button" className="adm-btn-secondary" onClick={cerrarModalParte} disabled={guardandoParte}>
+                                        Cancelar
+                                    </button>
+                                    <button type="submit" className="adm-btn-submit" disabled={guardandoParte}>
+                                        {guardandoParte ? 'Guardando...' : 'Guardar parte'}
                                     </button>
                                 </div>
                             </form>
